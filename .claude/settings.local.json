@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:www.ghanayello.com)",
+      "WebFetch(domain:searchgh.com)",
+      "WebFetch(domain:share.google)",
+      "WebFetch(domain:www.google.com)",
+      "WebFetch(domain:www.clasikalmartgh.com)",
+      "WebSearch",
+      "WebFetch(domain:twitter.com)",
+      "WebFetch(domain:seekghana.com)",
+      "Bash(where magick *)",
+      "Bash(where gs *)",
+      "Bash(where python *)",
+      "Bash(where node *)",
+      "Bash(python -c \"import fitz; print\\('pymupdf ok'\\)\")",
+      "Bash(python -c \"from pdf2image import convert_from_path; print\\('pdf2image ok'\\)\")",
+      "Bash(python -c \"from PIL import Image; print\\('PIL ok'\\)\")",
+      "Bash(python -m pip install pymupdf Pillow --quiet)",
+      "Bash(python \"C:\\\\Users\\\\Amazing Adiza\\\\.claude\\\\plugins\\\\cache\\\\ui-ux-pro-max-skill\\\\ui-ux-pro-max\\\\2.5.0\\\\.claude\\\\skills\\\\ui-ux-pro-max\\\\scripts\\\\search.py\" \"luxury bathroom decor showroom B2B inventory dashboard premium navy silver\" --design-system -p \"Clasikal Homes Portal\" -f markdown)",
+      "Bash(python \"C:/Users/Amazing Adiza/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/src/ui-ux-pro-max/scripts/search.py\" \"luxury bathroom decor showroom B2B inventory dashboard premium navy silver\" --design-system -p \"Clasikal Homes\" -f markdown)",
+      "Bash(rm \"styles/main.css\")",
+      "Bash(rmdir styles *)"
+    ]
+  }
+}
