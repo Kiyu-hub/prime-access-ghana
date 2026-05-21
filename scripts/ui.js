@@ -250,52 +250,23 @@ function showUpdateDialog(reg) {
 }
 
 /**
- * Returns the currently-active SW version string (or '' if unavailable).
- * Used to log "updated from X to Y" entries.
+ * Returns the currently-running app version. Used to log
+ * "updated from X to Y" entries.
  */
 async function readCurrentSWVersion() {
-    if (!('serviceWorker' in navigator)) return '';
-    try {
-        const reg = await navigator.serviceWorker.ready;
-        const sw = reg.active || navigator.serviceWorker.controller;
-        if (!sw) return '';
-        const channel = new MessageChannel();
-        return await new Promise((resolve) => {
-            const timer = setTimeout(() => resolve(''), 1500);
-            channel.port1.onmessage = (e) => {
-                clearTimeout(timer);
-                resolve((e.data && e.data.version) || '');
-            };
-            sw.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
-        });
-    } catch (_) { return ''; }
+    return (typeof self !== 'undefined' && self.CH_APP_VERSION) || (typeof window !== 'undefined' && window.CH_APP_VERSION) || '';
 }
 
 /**
- * Reads the active service worker's version and writes it into #sbVersion.
- * Falls back to "v—" if no SW yet.
+ * Writes the current app version (from scripts/version.js) into the badge.
+ * Instant — no service-worker round-trip. The version constant is loaded
+ * via the <script src="scripts/version.js"> tag before this module runs.
  */
-export async function showAppVersion(selector = '#sbVersion') {
+export function showAppVersion(selector = '#sbVersion') {
     const el = document.querySelector(selector);
     if (!el) return;
-    if (!('serviceWorker' in navigator)) { el.textContent = 'v—'; return; }
-    try {
-        const reg = await navigator.serviceWorker.ready;
-        const sw = reg.active || reg.installing || reg.waiting;
-        if (!sw) { el.textContent = 'v—'; return; }
-        const channel = new MessageChannel();
-        const version = await new Promise((resolve) => {
-            const timer = setTimeout(() => resolve(''), 2500);
-            channel.port1.onmessage = (e) => {
-                clearTimeout(timer);
-                resolve((e.data && e.data.version) || '');
-            };
-            sw.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
-        });
-        el.textContent = version || 'v—';
-    } catch (_) {
-        el.textContent = 'v—';
-    }
+    const v = (typeof self !== 'undefined' && self.CH_APP_VERSION) || (typeof window !== 'undefined' && window.CH_APP_VERSION) || '';
+    el.textContent = v || 'v—';
 }
 
 export function initYear(selector = '#year') {

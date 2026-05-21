@@ -5,7 +5,8 @@
    Skips non-GET requests entirely.
    ============================================================ */
 
-const VERSION = 'ch-v4.0.2';
+importScripts('./version.js');
+const VERSION = self.CH_APP_VERSION;
 const SHELL_CACHE   = VERSION + '-shell';
 const RUNTIME_CACHE = VERSION + '-runtime';
 
@@ -16,6 +17,7 @@ const SHELL = [
     './manifest.webmanifest',
     './assets/logo.png',
     './assets/catalog-reference.jpeg',
+    './scripts/version.js',
     './scripts/config.js',
     './scripts/supabase-client.js',
     './scripts/cloudinary.js',
