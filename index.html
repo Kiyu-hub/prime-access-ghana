@@ -390,6 +390,8 @@
     <script src="scripts/supabase-client.js"></script>
     <script src="scripts/auth.js"></script>
     <script src="scripts/install.js"></script>
+    <!-- Visible install button for manual testing / user-triggered install -->
+    <button id="chInstallPageBtn" aria-hidden="true" style="display:none; position: fixed; right: 16px; bottom: 16px; z-index: 9002; align-items: center; gap: 8px; padding: 10px 12px; background: linear-gradient(135deg,#0EA5E9,#38BDF8); color: #051022; border: 0; border-radius: 10px; font-weight:600; font-size:13px; cursor:pointer; box-shadow: 0 16px 40px rgba(0,0,0,0.35);">Install</button>
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();
         if ('serviceWorker' in navigator && location.protocol !== 'file:') {

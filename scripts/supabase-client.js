@@ -346,6 +346,54 @@
         },
     };
 
+    /* ---- categories ----------------------------------------- */
+    const categories = {
+        async list() {
+            const { data, error } = await client.from('categories')
+                .select('*')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        async add(name) {
+            const trimmed = (name || '').trim();
+            if (!trimmed) throw new Error('Name is required.');
+            const { data, error } = await client.from('categories')
+                .insert({ name: trimmed }).select().single();
+            if (error) throw error;
+            return data;
+        },
+        async remove(id) {
+            const { error } = await client.from('categories').delete().eq('id', id);
+            if (error) throw error;
+        },
+    };
+
+    /* ---- materials ------------------------------------------ */
+    const materials = {
+        async list() {
+            const { data, error } = await client.from('materials')
+                .select('*')
+                .order('sort_order', { ascending: true })
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        async add(name) {
+            const trimmed = (name || '').trim();
+            if (!trimmed) throw new Error('Name is required.');
+            const { data, error } = await client.from('materials')
+                .insert({ name: trimmed }).select().single();
+            if (error) throw error;
+            return data;
+        },
+        async remove(id) {
+            const { error } = await client.from('materials').delete().eq('id', id);
+            if (error) throw error;
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -361,5 +409,7 @@
         logs,
         drafts,
         announcements,
+        categories,
+        materials,
     });
 })();

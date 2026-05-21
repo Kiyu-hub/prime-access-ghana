@@ -224,11 +224,20 @@
     let currentImageUrl = null;  // Cloudinary URL of selected/uploaded image
     let isUploading = false;
     let currentView = 'products';
+    let categoriesCache = [];    // [{ id, name, sort_order }]
+    let materialsCache = [];     // same shape
 
     /* ---------- user header ---------- */
     els.userName.textContent = session.name || 'Staff';
     els.userBranch.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || '');
-    els.userAvatar.textContent = initials(session.name || 'CH');
+    // Director: avatar is the brand logo. Staff: initials in a coloured circle.
+    if (session.is_admin) {
+        els.userAvatar.textContent = '';
+        els.userAvatar.classList.add('avatar--logo');
+        els.userAvatar.innerHTML = '<img src="assets/logo.png" alt="" />';
+    } else {
+        els.userAvatar.textContent = initials(session.name || 'CH');
+    }
     els.branchHeading.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || 'Staff');
 
     /* ---------- view switcher (sidebar nav) ---------- */
@@ -265,6 +274,7 @@
         if (view === 'logs')     loadLogs();
         if (view === 'extract')  initExtract();
         if (view === 'announcements') loadAnnouncements();
+        if (view === 'taxonomy') loadTaxonomy();
     }
 
     /* ---------- logout ---------- */
@@ -388,6 +398,55 @@
         if (delBtn) { deleteProduct(delBtn.dataset.del); }
     });
 
+    /* ---------- taxonomy: cache + dropdown population ---------- */
+    async function refreshTaxonomyCache() {
+        if (!window.CH || !window.CH.categories) return;
+        try {
+            const [cats, mats] = await Promise.all([
+                window.CH.categories.list().catch(() => []),
+                window.CH.materials.list().catch(() => []),
+            ]);
+            if (cats.length) categoriesCache = cats;
+            if (mats.length) materialsCache = mats;
+        } catch (_) { /* fall back to whatever's hardcoded */ }
+        populateProductFormDropdowns();
+        populateProductFilterDropdowns();
+    }
+
+    function populateProductFormDropdowns() {
+        const catSel = $('#category');
+        const matSel = $('#material');
+        if (catSel && categoriesCache.length) {
+            const current = catSel.value;
+            catSel.innerHTML = '<option value="" disabled selected>Select category</option>' +
+                categoriesCache.map((c) => `<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+            if (current) catSel.value = current;
+        }
+        if (matSel && materialsCache.length) {
+            const current = matSel.value;
+            matSel.innerHTML = '<option value="">Select material</option>' +
+                materialsCache.map((m) => `<option value="${escapeAttr(m.name)}">${escapeHtml(m.name)}</option>`).join('');
+            if (current) matSel.value = current;
+        }
+    }
+
+    function populateProductFilterDropdowns() {
+        // Products page category filter
+        if (els.filterCategory && categoriesCache.length) {
+            const current = els.filterCategory.value;
+            els.filterCategory.innerHTML = '<option value="">All categories</option>' +
+                categoriesCache.map((c) => `<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+            if (current) els.filterCategory.value = current;
+        }
+        // Showroom category filter
+        if (els.showroomCategoryFilter && categoriesCache.length) {
+            const current = els.showroomCategoryFilter.value;
+            els.showroomCategoryFilter.innerHTML = '<option value="">All categories</option>' +
+                categoriesCache.map((c) => `<option value="${escapeAttr(c.name)}">${escapeHtml(c.name)}</option>`).join('');
+            if (current) els.showroomCategoryFilter.value = current;
+        }
+    }
+
     /* ---------- product modal ---------- */
     function openProductAdd() {
         if (!session.branch_id && !session.is_admin) {
@@ -397,6 +456,7 @@
         els.modalTitle.textContent = 'Add Product';
         els.editId.value = '';
         els.form.reset();
+        populateProductFormDropdowns();
         currentImageUrl = null;
         els.previewBox.classList.remove('is-shown');
         els.uploadProgress.classList.remove('is-shown');
@@ -409,6 +469,7 @@
         if (!p) return;
         els.modalTitle.textContent = 'Edit Product · ' + (p.item_no || p.description || '');
         els.editId.value = id;
+        populateProductFormDropdowns();
         $('#itemNo').value = p.item_no || '';
         $('#category').value = p.category || '';
         $('#description').value = p.description || '';
@@ -891,6 +952,147 @@
             }
         };
         reader.readAsArrayBuffer(file);
+    });
+
+    /* ============================================================
+       TAXONOMY (admin) — categories + materials master list
+       ============================================================ */
+
+    async function loadTaxonomy() {
+        if (!window.CH || !window.CH.categories) {
+            renderTaxonomyError();
+            return;
+        }
+        try {
+            const [cats, mats] = await Promise.all([
+                window.CH.categories.list(),
+                window.CH.materials.list(),
+            ]);
+            categoriesCache = cats;
+            materialsCache = mats;
+            renderTaxonomy();
+            populateProductFormDropdowns();
+            populateProductFilterDropdowns();
+        } catch (err) {
+            console.error(err);
+            renderTaxonomyError();
+        }
+    }
+
+    function renderTaxonomyError() {
+        const catList = $('#taxonomyCatList');
+        const matList = $('#taxonomyMatList');
+        const html = '<li class="taxonomy-list__empty">Catalog setup is not enabled yet. Please ask the Director to run the latest setup.</li>';
+        if (catList) catList.innerHTML = html;
+        if (matList) matList.innerHTML = html;
+    }
+
+    function renderTaxonomy() {
+        const catList = $('#taxonomyCatList');
+        const matList = $('#taxonomyMatList');
+        const catCount = $('#taxonomyCatCount');
+        const matCount = $('#taxonomyMatCount');
+        if (catCount) catCount.textContent = String(categoriesCache.length);
+        if (matCount) matCount.textContent = String(materialsCache.length);
+
+        if (catList) {
+            catList.innerHTML = categoriesCache.length
+                ? categoriesCache.map((c) => `
+                    <li class="taxonomy-list__item">
+                        <span class="taxonomy-list__name">${escapeHtml(c.name)}</span>
+                        <button type="button" class="taxonomy-list__del" data-taxonomy-cat-del="${escapeAttr(c.id)}" aria-label="Delete ${escapeAttr(c.name)}" title="Delete">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    </li>`).join('')
+                : '<li class="taxonomy-list__empty">No categories yet — add one above.</li>';
+        }
+        if (matList) {
+            matList.innerHTML = materialsCache.length
+                ? materialsCache.map((m) => `
+                    <li class="taxonomy-list__item">
+                        <span class="taxonomy-list__name">${escapeHtml(m.name)}</span>
+                        <button type="button" class="taxonomy-list__del" data-taxonomy-mat-del="${escapeAttr(m.id)}" aria-label="Delete ${escapeAttr(m.name)}" title="Delete">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
+                    </li>`).join('')
+                : '<li class="taxonomy-list__empty">No materials yet — add one above.</li>';
+        }
+    }
+
+    // Add handlers
+    const catForm = $('#taxonomyCatForm');
+    if (catForm) catForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = $('#taxonomyCatInput');
+        const name = (input.value || '').trim();
+        if (!name) return;
+        try {
+            await window.CH.categories.add(name);
+            input.value = '';
+            await window.CH.logs.record({ action: 'category_added', staff_id: session.id, staff_name: session.name, branch_id: session.branch_id, branch_name: session.branch_name, note: 'Added category "' + name + '"' });
+            await loadTaxonomy();
+            toast('Category added.', 'success');
+        } catch (err) {
+            const msg = (err && err.message) || '';
+            if (msg.includes('duplicate') || (err && err.code === '23505')) toast('That category already exists.', 'error');
+            else toast('Could not add category: ' + (msg || 'unknown error'), 'error');
+        }
+    });
+
+    const matForm = $('#taxonomyMatForm');
+    if (matForm) matForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = $('#taxonomyMatInput');
+        const name = (input.value || '').trim();
+        if (!name) return;
+        try {
+            await window.CH.materials.add(name);
+            input.value = '';
+            await window.CH.logs.record({ action: 'material_added', staff_id: session.id, staff_name: session.name, branch_id: session.branch_id, branch_name: session.branch_name, note: 'Added material "' + name + '"' });
+            await loadTaxonomy();
+            toast('Material added.', 'success');
+        } catch (err) {
+            const msg = (err && err.message) || '';
+            if (msg.includes('duplicate') || (err && err.code === '23505')) toast('That material already exists.', 'error');
+            else toast('Could not add material: ' + (msg || 'unknown error'), 'error');
+        }
+    });
+
+    // Delete handlers (event delegation on the list)
+    const catListEl = $('#taxonomyCatList');
+    if (catListEl) catListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-taxonomy-cat-del]');
+        if (!btn) return;
+        const id = btn.dataset.taxonomyCatDel;
+        const cat = categoriesCache.find((c) => c.id === id);
+        if (!cat) return;
+        if (!confirm('Delete category "' + cat.name + '"?\nExisting products keep their category text, but it will no longer appear in dropdowns.')) return;
+        try {
+            await window.CH.categories.remove(id);
+            await window.CH.logs.record({ action: 'category_deleted', staff_id: session.id, staff_name: session.name, branch_id: session.branch_id, branch_name: session.branch_name, note: 'Deleted category "' + cat.name + '"' });
+            await loadTaxonomy();
+            toast('Category deleted.', 'success');
+        } catch (err) {
+            toast('Could not delete category: ' + (err.message || 'unknown error'), 'error');
+        }
+    });
+
+    const matListEl = $('#taxonomyMatList');
+    if (matListEl) matListEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-taxonomy-mat-del]');
+        if (!btn) return;
+        const id = btn.dataset.taxonomyMatDel;
+        const mat = materialsCache.find((m) => m.id === id);
+        if (!mat) return;
+        if (!confirm('Delete material "' + mat.name + '"?\nExisting products keep their material text, but it will no longer appear in dropdowns.')) return;
+        try {
+            await window.CH.materials.remove(id);
+            await window.CH.logs.record({ action: 'material_deleted', staff_id: session.id, staff_name: session.name, branch_id: session.branch_id, branch_name: session.branch_name, note: 'Deleted material "' + mat.name + '"' });
+            await loadTaxonomy();
+            toast('Material deleted.', 'success');
+        } catch (err) {
+            toast('Could not delete material: ' + (err.message || 'unknown error'), 'error');
+        }
     });
 
     /* ============================================================
@@ -2924,6 +3126,8 @@
 
     /* ---------- initial load ---------- */
     (async function init() {
+        // Refresh taxonomy first so any modal opened during boot has dropdowns ready
+        await refreshTaxonomyCache();
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();
