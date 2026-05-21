@@ -1,0 +1,35 @@
+{
+    "name": "Clasikal Homes — Staff Portal",
+    "short_name": "Clasikal Homes",
+    "description": "Inventory and staff portal for Clasikal Homes — Ghana.",
+    "id": "/clasikal-homes/",
+    "start_url": "./index.html",
+    "scope": "./",
+    "display": "standalone",
+    "display_override": ["window-controls-overlay", "standalone", "minimal-ui", "browser"],
+    "orientation": "any",
+    "background_color": "#061427",
+    "theme_color": "#061427",
+    "categories": ["business", "productivity", "shopping"],
+    "lang": "en-GH",
+    "dir": "ltr",
+    "prefer_related_applications": false,
+    "icons": [
+        { "src": "assets/logo.png", "sizes": "any", "type": "image/png", "purpose": "any" },
+        { "src": "assets/logo.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+        { "src": "assets/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+    ],
+    "shortcuts": [
+        {
+            "name": "Inventory",
+            "short_name": "Inventory",
+            "description": "Open the product inventory",
+            "url": "./dashboard.html"
+        },
+        {
+            "name": "Sign in",
+            "short_name": "Sign in",
+            "url": "./index.html"
+        }
+    ]
+}

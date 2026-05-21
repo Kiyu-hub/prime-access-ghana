@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#061427" />
+    <title>Sign in — Clasikal Homes</title>
+    <meta name="description" content="Clasikal Homes Staff Portal — inventory management for our showroom and warehouse team." />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
+    <link rel="apple-touch-icon" href="assets/logo.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="assets/logo.png" />
+    <link rel="apple-touch-icon" sizes="512x512" href="assets/logo.png" />
+    <link rel="manifest" href="manifest.webmanifest" />
+
+    <!-- PWA install — iOS / Safari -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Clasikal Homes" />
+    <meta name="application-name" content="Clasikal Homes" />
+
+    <!-- PWA install — Microsoft Edge / Windows tile -->
+    <meta name="msapplication-TileColor" content="#061427" />
+    <meta name="msapplication-TileImage" content="assets/logo.png" />
+    <meta name="msapplication-navbutton-color" content="#061427" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <style>
+        :root {
+            --c-bg-1:       #051022;
+            --c-bg-2:       #0A1A33;
+            --c-bg-3:       #112C58;
+            --c-accent:     #38BDF8;
+            --c-accent-2:   #0EA5E9;
+            --c-line:       rgba(255, 255, 255, 0.08);
+            --c-ink:        #E2E8F0;
+            --c-ink-2:      #94A3B8;
+            --c-ink-3:      #64748B;
+            --c-danger:     #F87171;
+            --c-success:    #34D399;
+
+            --f-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+
+            --r-sm: 8px;
+            --r-md: 10px;
+            --r-lg: 14px;
+
+            --t-fast: 150ms cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+            font-family: var(--f-sans);
+            font-size: 14px;
+            color: var(--c-ink);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* ---------- BACKGROUND (matches reference image) ---------- */
+        body {
+            position: relative;
+            isolation: isolate;
+            background: radial-gradient(120% 90% at 100% 0%, #0E3A66 0%, #0A2148 35%, #061427 70%, #040D1C 100%);
+            display: grid;
+            place-items: center;
+            padding: 16px;
+        }
+        /* Subtle grid lines */
+        body::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+            background-size: 48px 48px;
+            mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+            -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+            pointer-events: none;
+            z-index: -1;
+        }
+        /* Cyan glow upper-right */
+        body::after {
+            content: '';
+            position: absolute;
+            top: -10%; right: -10%;
+            width: 60vw; height: 60vw;
+            background: radial-gradient(circle, rgba(56, 189, 248, 0.22) 0%, rgba(56, 189, 248, 0.08) 30%, transparent 60%);
+            pointer-events: none;
+            z-index: -1;
+            filter: blur(20px);
+        }
+
+        a { color: var(--c-accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        button { font-family: inherit; cursor: pointer; }
+        img { max-width: 100%; display: block; }
+
+        /* ---------- CENTERED STACK ---------- */
+        .wrap {
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .splash {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            text-align: center;
+        }
+        .logo {
+            width: 88px;
+            height: auto;
+            filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.55));
+            display: block;
+        }
+        .brand__name {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: 0.24em;
+            line-height: 1;
+        }
+        .brand__tagline {
+            margin: 8px 0 0;
+            font-size: 0.86rem;
+            font-style: italic;
+            color: var(--c-accent);
+            letter-spacing: 0.06em;
+        }
+
+        .head {
+            text-align: center;
+        }
+        .head h2 {
+            margin: 0 0 6px;
+            font-size: 1.18rem;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: -0.01em;
+        }
+        .head p {
+            margin: 0;
+            font-size: 0.82rem;
+            color: var(--c-ink-2);
+            line-height: 1.5;
+        }
+
+        /* ---------- COMPACT CARD ---------- */
+        .card {
+            width: 100%;
+            background: rgba(10, 26, 51, 0.55);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-lg);
+            padding: 20px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+        }
+
+        .field {
+            margin-bottom: 12px;
+        }
+        .field label {
+            display: block;
+            font-size: 0.72rem;
+            font-weight: 500;
+            color: var(--c-ink-2);
+            margin-bottom: 5px;
+            letter-spacing: 0.02em;
+        }
+        .field__input { position: relative; }
+
+        .field input {
+            width: 100%;
+            height: 38px;
+            padding: 0 12px;
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--c-ink);
+            font-family: inherit;
+            font-size: 0.86rem;
+            transition: border-color var(--t-fast), background var(--t-fast), box-shadow var(--t-fast);
+        }
+        .field input::placeholder { color: var(--c-ink-3); }
+        .field input:focus {
+            outline: none;
+            border-color: var(--c-accent);
+            background: rgba(255, 255, 255, 0.06);
+            box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+        }
+        .field input.has-toggle { padding-right: 38px; }
+
+        .toggle-pw {
+            position: absolute;
+            right: 4px; top: 50%;
+            transform: translateY(-50%);
+            width: 30px; height: 30px;
+            border: 0;
+            background: transparent;
+            color: var(--c-ink-3);
+            border-radius: var(--r-sm);
+            display: grid;
+            place-items: center;
+            transition: color var(--t-fast), background var(--t-fast);
+        }
+        .toggle-pw:hover { color: var(--c-accent); background: rgba(56, 189, 248, 0.08); }
+        .toggle-pw svg { width: 16px; height: 16px; }
+
+        .row {
+            display: flex;
+            justify-content: flex-end;
+            margin: 4px 0 14px;
+        }
+        .row a {
+            font-size: 0.74rem;
+            color: var(--c-ink-2);
+        }
+        .row a:hover { color: var(--c-accent); text-decoration: none; }
+
+        .btn-primary {
+            width: 100%;
+            height: 40px;
+            border: 0;
+            border-radius: var(--r-md);
+            background: linear-gradient(135deg, var(--c-accent-2) 0%, var(--c-accent) 100%);
+            color: #051022;
+            font-family: inherit;
+            font-weight: 600;
+            font-size: 0.86rem;
+            letter-spacing: 0.02em;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 8px 18px rgba(56, 189, 248, 0.25);
+            transition: filter var(--t-fast), transform var(--t-fast), box-shadow var(--t-fast);
+        }
+        .btn-primary:hover:not(:disabled) {
+            filter: brightness(1.08);
+            box-shadow: 0 10px 24px rgba(56, 189, 248, 0.35);
+        }
+        .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+        .btn-primary:disabled { opacity: 0.6; cursor: progress; }
+
+        .spinner {
+            width: 14px; height: 14px;
+            border: 2px solid rgba(5, 16, 34, 0.35);
+            border-top-color: #051022;
+            border-radius: 50%;
+            animation: spin 700ms linear infinite;
+            display: none;
+        }
+        .btn-primary.is-loading .spinner { display: inline-block; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .form-msg {
+            margin-top: 10px;
+            min-height: 16px;
+            font-size: 0.76rem;
+            text-align: center;
+            color: var(--c-danger);
+        }
+        .form-msg.success { color: var(--c-success); }
+        .form-msg.info    { color: var(--c-accent); }
+
+        .foot {
+            font-size: 0.72rem;
+            color: var(--c-ink-3);
+            text-align: center;
+        }
+
+        /* ---------- RESPONSIVE — fit any device, never scroll ---------- */
+        body {
+            min-height: 100vh;
+            min-height: 100svh; /* small-viewport unit handles mobile URL bar */
+        }
+        @media (max-height: 760px) {
+            body { padding: 14px; }
+            .wrap { gap: 16px; }
+            .logo { width: 60px; }
+            .splash { gap: 8px; }
+            .head h2 { font-size: 1.05rem; margin: 0 0 4px; }
+            .head p { font-size: 0.78rem; }
+            .card { padding: 16px; }
+            .field { margin-bottom: 10px; }
+            .field input { height: 36px; }
+            .btn-primary { height: 38px; }
+        }
+        @media (max-height: 600px) {
+            .wrap { gap: 10px; }
+            .logo { width: 48px; }
+            .brand__name { font-size: 0.92rem; letter-spacing: 0.18em; }
+            .brand__tagline { font-size: 0.7rem; margin-top: 4px; }
+            .head h2 { font-size: 0.96rem; }
+            .head p { display: none; }
+            .card { padding: 12px 14px 14px; }
+            .field { margin-bottom: 7px; }
+            .field label { margin-bottom: 3px; font-size: 0.66rem; }
+            .field input { height: 32px; font-size: 0.84rem; }
+            .row { margin: 2px 0 8px; }
+            .btn-primary { height: 34px; font-size: 0.84rem; }
+            .form-msg { margin-top: 5px; min-height: 0; }
+            .foot, .card__foot { display: none; }
+            .toggle-pw { width: 28px; height: 28px; }
+        }
+        @media (max-width: 480px) {
+            body { padding: 16px 14px; }
+            .wrap { max-width: 100%; }
+            .card { padding: 18px; border-radius: var(--r-lg); }
+            .logo { width: 64px; }
+            .brand__name { font-size: 1rem; }
+        }
+        @media (max-width: 360px) {
+            .card { padding: 14px; }
+            .logo { width: 56px; }
+        }
+    </style>
+</head>
+<body>
+
+    <main class="wrap">
+        <div class="splash">
+            <img class="logo" src="assets/logo.png" alt="Clasikal Homes" />
+            <div class="brand">
+                <h1 class="brand__name">CLASIKAL HOMES</h1>
+                <p class="brand__tagline">we listen, we create, you enjoy</p>
+            </div>
+        </div>
+
+        <div class="head">
+            <h2>Welcome back</h2>
+            <p>Sign in to the staff portal.</p>
+        </div>
+
+        <section class="card">
+            <form id="loginForm" novalidate>
+                <div class="field">
+                    <label for="email">Email</label>
+                    <div class="field__input">
+                        <input type="email" id="email" name="email" autocomplete="email" inputmode="email" placeholder="you@clasikalhomes.com" required />
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="password">Password</label>
+                    <div class="field__input">
+                        <input type="password" id="password" name="password" autocomplete="current-password" placeholder="••••••••" class="has-toggle" required />
+                        <button type="button" class="toggle-pw" id="togglePw" aria-label="Show password">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <a href="#" id="forgotLink">Forgot password?</a>
+                </div>
+
+                <button type="submit" class="btn-primary" id="loginBtn">
+                    <span class="spinner" aria-hidden="true"></span>
+                    <span>Sign in</span>
+                </button>
+
+                <div class="form-msg" id="formMsg" role="status" aria-live="polite"></div>
+            </form>
+        </section>
+
+        <p class="foot">&copy; <span id="year"></span> Clasikal Homes</p>
+    </main>
+
+    <script src="scripts/config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="scripts/supabase-client.js"></script>
+    <script src="scripts/auth.js"></script>
+    <script src="scripts/install.js"></script>
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+        if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+            window.addEventListener('load', () => navigator.serviceWorker.register('./scripts/sw.js').catch(() => {}));
+        }
+    </script>
+</body>
+</html>

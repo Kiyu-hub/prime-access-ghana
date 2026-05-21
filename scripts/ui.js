@@ -1,0 +1,305 @@
+/* ============================================================
+   Clasikal Homes — Shared UI polish layer
+   initReveal, initCursor, initMobileNav, registerSW
+   Loaded as a module from index.html and dashboard.html.
+   ============================================================ */
+
+export function initReveal() {
+    if (!('IntersectionObserver' in window)) {
+        document.querySelectorAll('.reveal').forEach((el) => el.classList.add('is-visible'));
+        return;
+    }
+    const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('is-visible');
+                io.unobserve(entry.target);
+            }
+        });
+    }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+}
+
+export function initCursor() {
+    // Skip on touch / coarse pointer devices entirely
+    if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const dot = document.getElementById('cursorDot');
+    const ring = document.getElementById('cursorRing');
+    if (!dot || !ring) return;
+
+    let mx = -100, my = -100;
+    let rx = -100, ry = -100;
+
+    document.addEventListener('mousemove', (e) => {
+        mx = e.clientX; my = e.clientY;
+        dot.style.transform = `translate3d(${mx - 3}px, ${my - 3}px, 0)`;
+    });
+
+    function loop() {
+        rx += (mx - rx) * 0.18;
+        ry += (my - ry) * 0.18;
+        ring.style.transform = `translate3d(${rx - 17}px, ${ry - 17}px, 0)`;
+        requestAnimationFrame(loop);
+    }
+    loop();
+
+    document.addEventListener('mouseover', (e) => {
+        if (e.target.closest('a, button, [role=button], input, select, textarea, [data-hover]')) {
+            ring.classList.add('is-hover');
+        } else {
+            ring.classList.remove('is-hover');
+        }
+    });
+}
+
+export function initMobileNav() {
+    const toggle = document.getElementById('navToggle');
+    const sidebar = document.querySelector('.sidebar');
+    const overlay = document.getElementById('navOverlay');
+    const closeBtn = document.getElementById('sidebarClose');
+    if (!toggle || !sidebar) return;
+
+    function close() {
+        sidebar.classList.remove('is-open');
+        if (overlay) overlay.classList.remove('is-shown');
+        toggle.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('drawer-open');
+    }
+    function open() {
+        sidebar.classList.add('is-open');
+        if (overlay) overlay.classList.add('is-shown');
+        toggle.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('drawer-open');
+    }
+
+    toggle.addEventListener('click', () => {
+        sidebar.classList.contains('is-open') ? close() : open();
+    });
+    if (closeBtn) closeBtn.addEventListener('click', close);
+    if (overlay) overlay.addEventListener('click', close);
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close();
+    });
+    sidebar.addEventListener('click', (e) => {
+        if (e.target.closest('#sidebarClose')) return; // already handled
+        if (e.target.closest('.nav a')) close();        // auto-close after tapping a nav link
+    });
+}
+
+const SW_RESET_KEY = 'ch_sw_reset_v4';
+const UPDATE_SNOOZE_KEY = 'ch_update_snooze_until';
+const SNOOZE_MS = 30 * 60 * 1000; // 30 minutes
+
+export function registerSW() {
+    if (!('serviceWorker' in navigator)) return;
+    if (location.protocol === 'file:') return;
+
+    // One-time hard reset: unregister any old SW + wipe its caches, then reload
+    // once so the fresh sw.js installs cleanly. Bump SW_RESET_KEY to trigger again.
+    if (!localStorage.getItem(SW_RESET_KEY)) {
+        (async () => {
+            try {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map((r) => r.unregister()));
+                if (window.caches && caches.keys) {
+                    const keys = await caches.keys();
+                    await Promise.all(keys.filter((k) => k.startsWith('ch-v')).map((k) => caches.delete(k)));
+                }
+            } catch (_) {}
+            localStorage.setItem(SW_RESET_KEY, '1');
+            // Reload once so the new SW installs against fresh, uncached HTML/CSS/JS
+            setTimeout(() => location.reload(), 60);
+        })();
+        return; // skip register() this load — it happens after the reload
+    }
+
+    window.addEventListener('load', async () => {
+        try {
+            const reg = await navigator.serviceWorker.register('./scripts/sw.js');
+            // Detect ONLY on initial load + once per hour fallback. No focus/visibility checks —
+            // those triggered the dialog every time the user tabbed back, which was the auto-reload
+            // pain point. The page NEVER reloads except when the user explicitly clicks the chip.
+            reg.addEventListener('updatefound', () => {
+                const newSW = reg.installing;
+                if (!newSW) return;
+                newSW.addEventListener('statechange', () => {
+                    if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                        showUpdateDialog(reg);
+                    }
+                });
+            });
+            // If a waiting SW already exists when the page loads (e.g. user
+            // dismissed earlier and came back), show the dialog right away.
+            if (reg.waiting && navigator.serviceWorker.controller) {
+                showUpdateDialog(reg);
+            }
+            // Hour heartbeat — slow enough not to bug active users
+            setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+        } catch (err) {
+            console.warn('[CH] Service worker registration failed:', err);
+        }
+    });
+}
+
+function showUpdateDialog(reg) {
+    if (document.getElementById('chUpdateModal')) return;
+    const snoozeUntil = Number(localStorage.getItem(UPDATE_SNOOZE_KEY) || 0);
+    if (Date.now() < snoozeUntil) return;
+
+    // Fetch the new SW's version so we can show it in the dialog
+    let newVersion = '';
+    try {
+        if (reg && reg.waiting) {
+            const channel = new MessageChannel();
+            channel.port1.onmessage = (e) => {
+                if (e.data && e.data.version) {
+                    newVersion = e.data.version;
+                    const numEl = document.getElementById('chUpdateNewV');
+                    if (numEl) numEl.textContent = newVersion;
+                }
+            };
+            reg.waiting.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        }
+    } catch (_) {}
+
+    const overlay = document.createElement('div');
+    overlay.id = 'chUpdateModal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-labelledby', 'chUpdateTitle');
+    overlay.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 9000;
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+        background: rgba(11, 31, 63, 0.55);
+        backdrop-filter: blur(8px) saturate(120%);
+        -webkit-backdrop-filter: blur(8px) saturate(120%);
+        opacity: 0;
+        transition: opacity 200ms ease;
+    `;
+    overlay.innerHTML = `
+        <div style="width:100%;max-width:440px;background:#fff;border-radius:18px;box-shadow:0 32px 80px rgba(2,6,23,0.45);overflow:hidden;font-family:inherit;transform:translateY(-8px) scale(0.97);transition:transform 240ms cubic-bezier(0.2,0,0,1), opacity 240ms ease;opacity:0;">
+            <div style="padding:24px 26px 18px;border-bottom:1px solid #E5E7EB;display:flex;align-items:flex-start;gap:14px;">
+                <div style="flex:0 0 44px;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#0EA5E9,#38BDF8);color:#fff;">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <h3 id="chUpdateTitle" style="margin:0;font-family:'Bodoni Moda',Georgia,serif;font-weight:600;font-size:1.25rem;color:#0F172A;letter-spacing:-0.01em;">Update Available</h3>
+                    <p style="margin:4px 0 0;font-size:0.86rem;color:#64748B;line-height:1.45;">A new version of the staff portal is ready. Your current work is safe — nothing will reload until you choose to update.</p>
+                </div>
+            </div>
+            <div style="padding:18px 26px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:0.78rem;color:#64748B;">
+                <span>New version</span>
+                <code id="chUpdateNewV" style="font-family:'JetBrains Mono',monospace;font-size:0.82rem;color:#0F172A;background:#F1F5F9;padding:3px 8px;border-radius:6px;">…</code>
+            </div>
+            <div style="padding:14px 22px 22px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+                <button id="chUpdateLater" type="button" style="background:#fff;border:1.5px solid #E5E7EB;color:#475569;padding:10px 18px;border-radius:10px;font:500 0.88rem/1 inherit;cursor:pointer;flex:0 1 auto;">Remind me later</button>
+                <button id="chUpdateNow" type="button" style="background:linear-gradient(135deg,#0B1F3F,#0369A1);color:#fff;border:0;padding:10px 22px;border-radius:10px;font:600 0.88rem/1 inherit;cursor:pointer;box-shadow:0 4px 12px rgba(3,105,161,0.35);flex:0 1 auto;">Update Now</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const dialog = overlay.firstElementChild;
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        dialog.style.opacity = '1';
+        dialog.style.transform = 'translateY(0) scale(1)';
+    });
+
+    function close() {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 240);
+    }
+    overlay.querySelector('#chUpdateLater').addEventListener('click', () => {
+        localStorage.setItem(UPDATE_SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
+        close();
+    });
+    overlay.querySelector('#chUpdateNow').addEventListener('click', async () => {
+        const btn = overlay.querySelector('#chUpdateNow');
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+        // Log the update BEFORE reload — best-effort, never blocks the update.
+        try {
+            const session = (window.CH && window.CH.session) || null;
+            const fromV = await readCurrentSWVersion();
+            if (session && window.CH && window.CH.logs && window.CH.logs.record) {
+                await window.CH.logs.record({
+                    action: 'app_updated',
+                    staff_id: session.id,
+                    staff_name: session.name,
+                    branch_id: session.branch_id,
+                    branch_name: session.branch_name,
+                    note: 'Updated' + (fromV ? ' from ' + fromV : '') + (newVersion ? ' to ' + newVersion : ''),
+                });
+            }
+        } catch (_) { /* swallow — never block the update */ }
+        try { if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (_) {}
+        setTimeout(() => location.reload(), 200);
+    });
+    // ESC dismisses (treats as "later") but never auto-applies
+    document.addEventListener('keydown', function onKey(e) {
+        if (e.key === 'Escape') {
+            document.removeEventListener('keydown', onKey);
+            localStorage.setItem(UPDATE_SNOOZE_KEY, String(Date.now() + SNOOZE_MS));
+            close();
+        }
+    });
+}
+
+/**
+ * Returns the currently-active SW version string (or '' if unavailable).
+ * Used to log "updated from X to Y" entries.
+ */
+async function readCurrentSWVersion() {
+    if (!('serviceWorker' in navigator)) return '';
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sw = reg.active || navigator.serviceWorker.controller;
+        if (!sw) return '';
+        const channel = new MessageChannel();
+        return await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(''), 1500);
+            channel.port1.onmessage = (e) => {
+                clearTimeout(timer);
+                resolve((e.data && e.data.version) || '');
+            };
+            sw.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        });
+    } catch (_) { return ''; }
+}
+
+/**
+ * Reads the active service worker's version and writes it into #sbVersion.
+ * Falls back to "v—" if no SW yet.
+ */
+export async function showAppVersion(selector = '#sbVersion') {
+    const el = document.querySelector(selector);
+    if (!el) return;
+    if (!('serviceWorker' in navigator)) { el.textContent = 'v—'; return; }
+    try {
+        const reg = await navigator.serviceWorker.ready;
+        const sw = reg.active || reg.installing || reg.waiting;
+        if (!sw) { el.textContent = 'v—'; return; }
+        const channel = new MessageChannel();
+        const version = await new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(''), 2500);
+            channel.port1.onmessage = (e) => {
+                clearTimeout(timer);
+                resolve((e.data && e.data.version) || '');
+            };
+            sw.postMessage({ type: 'GET_VERSION' }, [channel.port2]);
+        });
+        el.textContent = version || 'v—';
+    } catch (_) {
+        el.textContent = 'v—';
+    }
+}
+
+export function initYear(selector = '#year') {
+    document.querySelectorAll(selector).forEach((el) => {
+        el.textContent = new Date().getFullYear();
+    });
+}

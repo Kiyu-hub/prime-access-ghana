@@ -1,0 +1,29 @@
+# Claude Code local state (per-machine permissions, not for repo)
+.claude/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Dependency dirs (none used yet, but future-proof)
+node_modules/
+
+# Secrets (we don't use .env right now — config.js holds public keys only —
+# but anyone else cloning may add one)
+.env
+.env.*
+!.env.example
+
+# Local Netlify state
+.netlify/
+
+# Build output (none today)
+dist/
+build/
