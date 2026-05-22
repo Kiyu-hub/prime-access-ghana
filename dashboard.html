@@ -1575,11 +1575,24 @@
         @media (max-width: 720px) { .pdetail__dialog { grid-template-columns: 1fr; } }
         .pdetail__media {
             aspect-ratio: 1 / 1;
-            background: var(--c-bg);
+            background: #f8fafc;
             overflow: hidden;
             position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 12px;
         }
-        .pdetail__media img { width: 100%; height: 100%; object-fit: cover; }
+        /* contain (not cover) so the entire product image is visible,
+           even when the original isn't square. */
+        .pdetail__media img {
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            display: block;
+        }
         .pdetail__media--ph { display: grid; place-items: center; color: var(--c-ink-5); }
         .pdetail__media--ph svg { width: 64px; height: 64px; }
         .pdetail__body {
@@ -3010,7 +3023,6 @@
                                     <th>Color</th>
                                     <th>Dimensions (mm)</th>
                                     <th>Price</th>
-                                    <th>Stock</th>
                                     <th>Quantity</th>
                                     <th style="text-align: right;">Actions</th>
                                 </tr>

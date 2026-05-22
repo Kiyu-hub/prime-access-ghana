@@ -393,7 +393,7 @@
             ? '<span class="pill pill--pending" title="Awaiting Director review">Pending approval</span>'
             : '';
         return `
-            <tr${p.is_draft ? ' class="row--draft"' : ''}>
+            <tr${p.is_draft ? ' class="row--draft"' : ''} data-product-id="${p.id}" style="cursor: pointer;">
                 <td>${thumb}</td>
                 <td><span class="itemno">${p.item_no ? escapeHtml(p.item_no) : '<span style="color:var(--c-ink-5);">—</span>'}</span> ${draftBadge}</td>
                 <td style="max-width:280px;">${escapeHtml(p.description || '')}</td>
@@ -403,7 +403,6 @@
                 <td>${dims}</td>
                 <td><strong>${CURRENCY} ${Number(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                 <td><span class="pill ${stockClass}">${stockLabel}</span></td>
-                <td>${p.quantity != null ? escapeHtml(String(p.quantity)) : '<span style="color:var(--c-ink-5);">—</span>'}</td>
                 <td>
                     <div class="row-actions">
                         <button class="icon-btn" data-edit="${p.id}" title="Edit" aria-label="Edit">
@@ -422,7 +421,15 @@
         const editBtn = e.target.closest('[data-edit]');
         if (editBtn) { openProductEdit(editBtn.dataset.edit); return; }
         const delBtn = e.target.closest('[data-del]');
-        if (delBtn) { deleteProduct(delBtn.dataset.del); }
+        if (delBtn) { deleteProduct(delBtn.dataset.del); return; }
+        // Click anywhere else on the row -> open the detail modal (read-only view).
+        const row = e.target.closest('tr[data-product-id]');
+        if (row) {
+            const p = products.find((x) => x.id === row.dataset.productId);
+            if (!p) return;
+            const branchName = (allBranchesCache.find((b) => b.id === p.branch_id) || {}).name || '';
+            openProductDetail(p, branchName);
+        }
     });
 
     /* ---------- taxonomy: cache + dropdown population ---------- */
@@ -1912,9 +1919,8 @@
         const rows = [];
         const dims = [p.dim_l, p.dim_w, p.dim_h].filter(Boolean).join(' × ');
         if (dims) rows.push(['Dimensions', dims + ' mm']);
-        if (p.quantity != null && p.quantity !== '') rows.push(['Pack qty / MOQ', p.quantity]);
         if (p.supplier) rows.push(['Supplier', p.supplier]);
-        rows.push(['Stock on hand', stock]);
+        rows.push(['Quantity', stock]);
         if (p.created_at) rows.push(['Added', new Date(p.created_at).toLocaleDateString()]);
         els.pdetailRows.innerHTML = rows.map(([k, v]) => `<div class="pdetail__row"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
 
