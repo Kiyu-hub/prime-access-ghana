@@ -118,9 +118,11 @@ export function registerSW() {
     window.addEventListener('load', async () => {
         try {
             const reg = await navigator.serviceWorker.register('./scripts/sw.js');
-            // Detect ONLY on initial load + once per hour fallback. No focus/visibility checks —
-            // those triggered the dialog every time the user tabbed back, which was the auto-reload
-            // pain point. The page NEVER reloads except when the user explicitly clicks the chip.
+
+            // Auto-detect when a new SW becomes available and open the dialog.
+            // The page itself NEVER reloads automatically — only when the user
+            // clicks "Update Now" inside the dialog. So this is a non-destructive
+            // prompt, never an interruption.
             reg.addEventListener('updatefound', () => {
                 const newSW = reg.installing;
                 if (!newSW) return;
@@ -135,8 +137,17 @@ export function registerSW() {
             if (reg.waiting && navigator.serviceWorker.controller) {
                 showUpdateDialog(reg);
             }
-            // Hour heartbeat — slow enough not to bug active users
-            setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000);
+
+            // Aggressive update polling so a fresh deploy surfaces within ~60s
+            // instead of waiting for the browser's default 24-hour SW check.
+            // Also re-check whenever the tab is focused or becomes visible.
+            const checkForUpdate = () => reg.update().catch(() => {});
+            setInterval(checkForUpdate, 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') checkForUpdate();
+            });
+            window.addEventListener('focus', checkForUpdate);
+            window.addEventListener('online', checkForUpdate);
         } catch (err) {
             console.warn('[CH] Service worker registration failed:', err);
         }
