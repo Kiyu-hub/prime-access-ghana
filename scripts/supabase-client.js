@@ -500,6 +500,99 @@
         },
     };
 
+    /* ---- product transfers (Phase 2) ------------------------- */
+    const productTransfers = {
+        // Fetch transfers. Optional filters:
+        //   { status, fromWarehouseId, toBranchId, productId, limit }
+        async list(opts = {}) {
+            let q = client.from('product_transfer_requests')
+                .select('*, from_warehouse:from_warehouse_id(name,code), to_warehouse:to_warehouse_id(name,code), from_branch:from_branch_id(name), to_branch:to_branch_id(name)')
+                .order('requested_at', { ascending: false });
+            if (opts.status)            q = q.eq('status', opts.status);
+            if (opts.fromWarehouseId)   q = q.eq('from_warehouse_id', opts.fromWarehouseId);
+            if (opts.toBranchId)        q = q.eq('to_branch_id', opts.toBranchId);
+            if (opts.productId)         q = q.eq('product_id', opts.productId);
+            if (opts.limit)             q = q.limit(opts.limit);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        },
+
+        // Count pending transfers, optionally scoped to a branch (incoming).
+        async countPending({ toBranchId, fromWarehouseId } = {}) {
+            let q = client.from('product_transfer_requests')
+                .select('id', { count: 'exact', head: true })
+                .eq('status', 'pending');
+            if (toBranchId)     q = q.eq('to_branch_id', toBranchId);
+            if (fromWarehouseId) q = q.eq('from_warehouse_id', fromWarehouseId);
+            const { count, error } = await q;
+            if (error) throw error;
+            return count || 0;
+        },
+
+        // Find warehouses that hold a given item_no with stock > 0, excluding
+        // a warehouse (typically the requester's own). Used to populate the
+        // "From which branch" dropdown in the request modal.
+        async findSourcesForItem(itemNo, excludeWarehouseId) {
+            const { data, error } = await client.from('products')
+                .select('id, warehouse_id, stock, branch_id, warehouses:warehouse_id(name,code), branches:branch_id(name)')
+                .eq('item_no', itemNo)
+                .gt('stock', 0)
+                .eq('is_draft', false);
+            if (error) throw error;
+            return (data || []).filter((p) => p.warehouse_id && p.warehouse_id !== excludeWarehouseId);
+        },
+
+        // Create a new transfer request (calls the SECURITY DEFINER RPC).
+        async create({ product_id, from_warehouse_id, qty, payment_method, payment_provider, delivery_type, requester_staff_id, requester_code, note }) {
+            const { data, error } = await client.rpc('request_product_transfer', {
+                p_product_id: product_id,
+                p_from_warehouse_id: from_warehouse_id,
+                p_qty: qty,
+                p_payment_method: payment_method,
+                p_payment_provider: payment_provider || null,
+                p_delivery_type: delivery_type,
+                p_requester_staff_id: requester_staff_id,
+                p_requester_code: requester_code || null,
+                p_note: note || null,
+            });
+            if (error) throw error;
+            return data; // the PT-... code
+        },
+
+        // Receive a transfer: atomic stock move + status update.
+        async receive(id, { receiver_staff_id, receiver_code, qty_received, payment_confirmed }) {
+            const { error } = await client.rpc('receive_product_transfer', {
+                p_id: id,
+                p_receiver_staff_id: receiver_staff_id,
+                p_receiver_code: receiver_code || null,
+                p_qty_received: qty_received,
+                p_payment_confirmed: !!payment_confirmed,
+            });
+            if (error) throw error;
+        },
+
+        // Cancel a pending transfer.
+        async cancel(id, { by_staff_id, reason }) {
+            const { error } = await client.rpc('cancel_product_transfer', {
+                p_id: id,
+                p_by_staff_id: by_staff_id,
+                p_reason: reason || null,
+            });
+            if (error) throw error;
+        },
+
+        // Subscribe to realtime changes on this table. Returns an unsubscribe
+        // function. The callback gets the Supabase change payload.
+        subscribe(onChange) {
+            if (!client) return () => {};
+            const ch = client.channel('ch-product-transfers')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'product_transfer_requests' }, onChange)
+                .subscribe();
+            return () => client.removeChannel(ch);
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -519,5 +612,6 @@
         materials,
         warehouses,
         roles,
+        productTransfers,
     });
 })();
