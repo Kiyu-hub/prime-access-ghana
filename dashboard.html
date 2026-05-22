@@ -1859,6 +1859,75 @@
         .pt-staff-resolve.is-ok    { color: var(--c-success); font-weight: 600; }
         .pt-staff-resolve.is-error { color: var(--c-danger);  font-weight: 600; }
 
+        .pt-status-toggle {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .pt-status-toggle > label {
+            flex: 1 1 calc(50% - 10px);
+            min-width: 160px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 14px;
+            background: var(--c-bg);
+            border: 1.5px solid var(--c-line);
+            border-radius: var(--r-md);
+            cursor: pointer;
+            font-size: 0.92rem;
+            color: var(--c-ink-2);
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 500;
+            transition: all var(--t-fast);
+        }
+        .pt-status-toggle > label:hover { border-color: var(--c-accent); }
+        .pt-status-toggle input[type=radio] { width: 18px; height: 18px; accent-color: var(--c-accent); cursor: pointer; flex-shrink: 0; }
+        .pt-status-toggle > label:has(input:checked) {
+            border-color: var(--c-accent);
+            background: rgba(56, 189, 248, 0.08);
+            color: var(--c-ink-2);
+        }
+
+        .pt-source-accounts {
+            background: #FEF3C7;
+            border: 1px solid #FDE68A;
+            border-radius: var(--r-md);
+            padding: 14px 16px;
+            color: #78350F;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+        .pt-source-accounts__title { font-weight: 700; margin-bottom: 8px; color: #78350F; }
+        .pt-source-account {
+            background: rgba(255, 255, 255, 0.7);
+            border: 1px solid #FDE68A;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-top: 6px;
+        }
+        .pt-source-account__provider { font-weight: 700; color: #92400E; }
+        .pt-source-account__row { display: flex; gap: 8px; margin-top: 2px; }
+        .pt-source-account__row code {
+            font-family: var(--f-mono);
+            background: rgba(255, 255, 255, 0.6);
+            padding: 1px 6px;
+            border-radius: 4px;
+            color: #78350F;
+        }
+        .pt-source-accounts__hint {
+            margin-top: 10px;
+            font-size: 0.82rem;
+            color: #92400E;
+            font-style: italic;
+        }
+        .pt-source-accounts.is-empty {
+            background: #FEE2E2;
+            border-color: #FECACA;
+            color: #991B1B;
+        }
+
         /* ---------- DRAFTS bulk-action bar ---------- */
         .drafts-bulk-bar {
             display: flex;
@@ -2870,6 +2939,15 @@
                     </svg>
                     <span>Warehouses</span>
                 </a>
+                <a class="admin-only" data-view="payment-accounts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="6" width="18" height="13" rx="2"/>
+                        <path d="M3 10h18"/>
+                        <path d="M7 15h3"/>
+                        <path d="M14 15h3"/>
+                    </svg>
+                    <span>Payment Accounts</span>
+                </a>
                 <a class="admin-only" data-view="taxonomy">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 7h18"/>
@@ -3220,6 +3298,49 @@
             </section>
 
             <!-- ============================== -->
+            <!--      PAYMENT ACCOUNTS VIEW     -->
+            <!-- ============================== -->
+            <section class="view" id="view-payment-accounts">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Payment Accounts</h1>
+                        <p>Bank, MoMo, POS, and cash destinations a branch accepts. Used by transfer requests so requesters know where to pay.</p>
+                    </div>
+                    <div class="topbar__actions">
+                        <button class="btn btn--primary" id="addPaymentAccountBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                            <span>Add Account</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-wrap">
+                    <div class="table-scroll">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Method</th>
+                                    <th>Provider</th>
+                                    <th>Account name</th>
+                                    <th>Account number</th>
+                                    <th>Available to</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paymentAccountsBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="empty" id="paymentAccountsEmpty" style="display:none;">
+                        <div class="empty__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>
+                        </div>
+                        <h3>No payment accounts yet</h3>
+                        <p>Add bank, MoMo, or POS accounts so requesters know where to pay.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================== -->
             <!--          BRANCHES VIEW         -->
             <!-- ============================== -->
             <section class="view" id="view-branches">
@@ -3531,6 +3652,12 @@
                             <option value="warehouse_updated">Warehouse updated</option>
                             <option value="warehouse_deleted">Warehouse deleted</option>
                             <option value="role_assigned">Role assigned</option>
+                            <option value="payment_account_added">Payment account added</option>
+                            <option value="payment_account_updated">Payment account updated</option>
+                            <option value="payment_account_deleted">Payment account deleted</option>
+                            <option value="product_transfer_requested">Product transfer requested</option>
+                            <option value="product_transfer_received">Product transfer received</option>
+                            <option value="product_transfer_cancelled">Product transfer cancelled</option>
                         </select>
                     </label>
                 </div>
@@ -3833,6 +3960,87 @@
     </div>
 
     <!-- ============================== -->
+    <!--      PAYMENT ACCOUNT MODAL     -->
+    <!-- ============================== -->
+    <div class="modal" id="paymentAccountModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3 id="paymentAccountModalTitle">Add Payment Account</h3>
+                    <p>Make this account available to a specific branch or to all branches.</p>
+                </div>
+                <button class="modal__close" data-close="paymentAccountModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="paymentAccountForm">
+                <div class="modal__body">
+                    <input type="hidden" id="paymentAccountEditId" />
+                    <div>
+                        <label for="paMethod">Method<span class="req">*</span></label>
+                        <select id="paMethod" required>
+                            <option value="" disabled selected>Select method</option>
+                            <option value="cash">Cash</option>
+                            <option value="momo">Mobile Money (MoMo)</option>
+                            <option value="pos">POS terminal</option>
+                            <option value="bank">Bank</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="paProvider">Provider<span class="req">*</span></label>
+                        <input type="text" id="paProvider" list="paProviderSuggest" placeholder="e.g. MTN MoMo, GCB Bank" required />
+                        <datalist id="paProviderSuggest">
+                            <option value="MTN MoMo"></option>
+                            <option value="Vodafone Cash"></option>
+                            <option value="AirtelTigo Money"></option>
+                            <option value="GCB Bank"></option>
+                            <option value="Stanbic Bank"></option>
+                            <option value="Ecobank"></option>
+                            <option value="Fidelity Bank"></option>
+                            <option value="CalBank"></option>
+                            <option value="Zenith Bank"></option>
+                            <option value="Access Bank"></option>
+                            <option value="Absa Bank"></option>
+                            <option value="UMB"></option>
+                            <option value="GTBank"></option>
+                            <option value="Republic Bank"></option>
+                            <option value="Visa POS"></option>
+                            <option value="Mastercard POS"></option>
+                            <option value="Cash at counter"></option>
+                        </datalist>
+                    </div>
+                    <div>
+                        <label for="paAccountName">Account name<span class="req">*</span></label>
+                        <input type="text" id="paAccountName" placeholder="e.g. Clasikal Homes" required />
+                    </div>
+                    <div>
+                        <label for="paAccountNumber">Account number<span class="req">*</span></label>
+                        <input type="text" id="paAccountNumber" placeholder="e.g. 024 123 4567" required />
+                    </div>
+                    <div class="field--full">
+                        <label for="paNotes">Notes <span class="hint">(optional)</span></label>
+                        <textarea id="paNotes" rows="2" placeholder="Internal note, e.g. account holder, reference required"></textarea>
+                    </div>
+                    <div class="field--full">
+                        <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.92rem;color:var(--c-ink-2);">
+                            <input type="checkbox" id="paIsGlobal" style="width:18px;height:18px;accent-color:var(--c-accent);" />
+                            Available to <strong>all branches</strong>
+                        </label>
+                    </div>
+                    <div class="field--full" id="paBranchLinksField">
+                        <label>Available to these branches<span class="req">*</span></label>
+                        <div id="paBranchLinks" class="wh-branch-links" style="max-height:200px;"></div>
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="paymentAccountModal">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Save Account</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================== -->
     <!--           STAFF MODAL          -->
     <!-- ============================== -->
     <div class="modal" id="staffModal" role="dialog" aria-modal="true">
@@ -4014,6 +4222,14 @@
                         </select>
                     </div>
 
+                    <div class="field--full">
+                        <label>Payment status<span class="req">*</span></label>
+                        <div class="pt-status-toggle">
+                            <label><input type="radio" name="ptPaymentStatus" value="not_paid" /> <span>Not paid yet</span></label>
+                            <label><input type="radio" name="ptPaymentStatus" value="paid" /> <span>Paid</span></label>
+                        </div>
+                    </div>
+
                     <div>
                         <label for="ptPaymentMethod">Payment method<span class="req">*</span></label>
                         <select id="ptPaymentMethod" required>
@@ -4030,6 +4246,29 @@
                         <select id="ptPaymentProvider">
                             <option value="" disabled selected>Select provider</option>
                         </select>
+                    </div>
+
+                    <!-- When status=Paid (and method != cash): which account did the requester pay to? -->
+                    <div class="field--full" id="ptAccountField" style="display:none;">
+                        <label for="ptAccountSelect">Which account did you pay to?<span class="req">*</span></label>
+                        <select id="ptAccountSelect"></select>
+                    </div>
+
+                    <!-- When status=Not paid (and method != cash): show source's account info -->
+                    <div class="field--full" id="ptAccountInfoField" style="display:none;">
+                        <div id="ptAccountInfoBox" class="pt-source-accounts"></div>
+                    </div>
+
+                    <!-- When status=Paid: affirmations -->
+                    <div class="field--full" id="ptAffirmationField" style="display:none;">
+                        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.88rem;color:var(--c-ink-2);font-weight:400;line-height:1.5;">
+                            <input type="checkbox" id="ptAffirmPaid" style="width:18px;height:18px;accent-color:var(--c-accent);margin-top:2px;flex-shrink:0;" />
+                            <span>I confirm payment has been made.</span>
+                        </label>
+                        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.88rem;color:var(--c-ink-2);font-weight:400;line-height:1.5;margin-top:8px;">
+                            <input type="checkbox" id="ptAffirmCancel" style="width:18px;height:18px;accent-color:var(--c-accent);margin-top:2px;flex-shrink:0;" />
+                            <span>I understand the request will be cancelled if the source branch cannot verify payment.</span>
+                        </label>
                     </div>
 
                     <div>

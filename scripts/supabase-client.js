@@ -593,6 +593,66 @@
         },
     };
 
+    /* ---- payment accounts (Phase 2) -------------------------- */
+    const paymentAccounts = {
+        async list() {
+            // Pull accounts + their linked branches (for the admin table display)
+            const [accountsResult, linksResult] = await Promise.all([
+                client.from('payment_accounts').select('*').order('is_global', { ascending: false }).order('method').order('provider'),
+                client.from('payment_account_branches').select('payment_account_id, branch_id, branches(name)'),
+            ]);
+            if (accountsResult.error) throw accountsResult.error;
+            if (linksResult.error) throw linksResult.error;
+            const linksByAccount = new Map();
+            (linksResult.data || []).forEach((l) => {
+                const arr = linksByAccount.get(l.payment_account_id) || [];
+                arr.push({ branch_id: l.branch_id, branch_name: l.branches && l.branches.name });
+                linksByAccount.set(l.payment_account_id, arr);
+            });
+            return (accountsResult.data || []).map((a) => ({ ...a, branches: linksByAccount.get(a.id) || [] }));
+        },
+        async listForBranch(branchId) {
+            const { data, error } = await client.rpc('payment_accounts_for_branch', { p_branch_id: branchId });
+            if (error) throw error;
+            return data || [];
+        },
+        async add({ method, provider, account_name, account_number, notes, is_global, branch_ids, created_by }) {
+            const { data: pa, error } = await client.from('payment_accounts')
+                .insert({ method, provider, account_name, account_number, notes: notes || null, is_global: !!is_global, created_by: created_by || null })
+                .select().single();
+            if (error) throw error;
+            if (!is_global && Array.isArray(branch_ids) && branch_ids.length > 0) {
+                const rows = branch_ids.map((b) => ({ payment_account_id: pa.id, branch_id: b }));
+                const { error: linkErr } = await client.from('payment_account_branches').insert(rows);
+                if (linkErr) throw linkErr;
+            }
+            return pa;
+        },
+        async update(id, { method, provider, account_name, account_number, notes, is_global }) {
+            const patch = {};
+            if (method !== undefined)         patch.method = method;
+            if (provider !== undefined)       patch.provider = provider;
+            if (account_name !== undefined)   patch.account_name = account_name;
+            if (account_number !== undefined) patch.account_number = account_number;
+            if (notes !== undefined)          patch.notes = notes || null;
+            if (is_global !== undefined)      patch.is_global = !!is_global;
+            const { error } = await client.from('payment_accounts').update(patch).eq('id', id);
+            if (error) throw error;
+        },
+        async remove(id) {
+            const { error } = await client.from('payment_accounts').delete().eq('id', id);
+            if (error) throw error;
+        },
+        async replaceBranchLinks(accountId, branchIds) {
+            const { error: delErr } = await client.from('payment_account_branches').delete().eq('payment_account_id', accountId);
+            if (delErr) throw delErr;
+            if (!branchIds || branchIds.length === 0) return;
+            const rows = branchIds.map((b) => ({ payment_account_id: accountId, branch_id: b }));
+            const { error } = await client.from('payment_account_branches').insert(rows);
+            if (error) throw error;
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -613,5 +673,6 @@
         warehouses,
         roles,
         productTransfers,
+        paymentAccounts,
     });
 })();

@@ -289,6 +289,7 @@
         if (view === 'announcements') loadAnnouncements();
         if (view === 'taxonomy') loadTaxonomy();
         if (view === 'warehouses') loadWarehouses();
+        if (view === 'payment-accounts') loadPaymentAccounts();
     }
 
     /* ---------- logout ---------- */
@@ -1326,6 +1327,193 @@
     }
 
     /* ============================================================
+       PAYMENT ACCOUNTS (admin) — Phase 2
+       ============================================================ */
+    let paymentAccountsCache = [];
+
+    const PA_ELS = {
+        body:    $('#paymentAccountsBody'),
+        empty:   $('#paymentAccountsEmpty'),
+        modal:   $('#paymentAccountModal'),
+        title:   $('#paymentAccountModalTitle'),
+        form:    $('#paymentAccountForm'),
+        editId:  $('#paymentAccountEditId'),
+        method:  $('#paMethod'),
+        provider:$('#paProvider'),
+        name:    $('#paAccountName'),
+        number:  $('#paAccountNumber'),
+        notes:   $('#paNotes'),
+        global:  $('#paIsGlobal'),
+        branchLinksField: $('#paBranchLinksField'),
+        branchLinks:      $('#paBranchLinks'),
+        addBtn:  $('#addPaymentAccountBtn'),
+    };
+
+    const PA_METHOD_LABELS = { cash: 'Cash', momo: 'MoMo', pos: 'POS', bank: 'Bank' };
+
+    async function loadPaymentAccounts() {
+        if (!session.is_admin) return;
+        if (!window.CH || !window.CH.paymentAccounts) {
+            if (PA_ELS.body) PA_ELS.body.innerHTML = '<tr><td colspan="6" style="padding: 24px; text-align: center; color: var(--c-ink-5);">Payment accounts not enabled yet. Please ask the Director to run the latest setup.</td></tr>';
+            return;
+        }
+        try {
+            paymentAccountsCache = await window.CH.paymentAccounts.list();
+            if (allBranchesCache.length === 0) allBranchesCache = await window.CH.branches.list();
+            renderPaymentAccounts();
+        } catch (err) {
+            console.error(err);
+            if (isMissingTableError(err)) {
+                if (PA_ELS.body) PA_ELS.body.innerHTML = '<tr><td colspan="6" style="padding: 24px; text-align: center; color: var(--c-ink-5);">Payment accounts not enabled yet. Please ask the Director to run the latest setup.</td></tr>';
+            } else {
+                toast('Could not load payment accounts: ' + (err.message || 'unknown error'), 'error');
+            }
+        }
+    }
+
+    function renderPaymentAccounts() {
+        if (!PA_ELS.body) return;
+        if (paymentAccountsCache.length === 0) {
+            PA_ELS.body.innerHTML = '';
+            PA_ELS.empty.style.display = 'block';
+            return;
+        }
+        PA_ELS.empty.style.display = 'none';
+        PA_ELS.body.innerHTML = paymentAccountsCache.map((a) => {
+            const branches = a.is_global
+                ? '<span class="pill pill--admin">All branches</span>'
+                : ((a.branches || []).map((b) => '<span class="pill" style="font-size:0.62rem;">' + escapeHtml(b.branch_name || '?') + '</span>').join(' ') || '<span style="color:var(--c-ink-5);">— none —</span>');
+            return `<tr>
+                <td><span class="pill">${escapeHtml(PA_METHOD_LABELS[a.method] || a.method)}</span></td>
+                <td>${escapeHtml(a.provider)}</td>
+                <td>${escapeHtml(a.account_name)}</td>
+                <td><span class="itemno">${escapeHtml(a.account_number)}</span></td>
+                <td>${branches}</td>
+                <td>
+                    <div class="row-actions">
+                        <button class="icon-btn" data-edit-pa="${a.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                        <button class="icon-btn icon-btn--danger" data-del-pa="${a.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderPaymentAccountBranchLinks(accountId) {
+        if (!PA_ELS.branchLinks) return;
+        const a = paymentAccountsCache.find((x) => x.id === accountId);
+        const linkedIds = new Set((a && a.branches || []).map((b) => b.branch_id));
+        PA_ELS.branchLinks.innerHTML = (allBranchesCache || []).map((b) => {
+            const checked = linkedIds.has(b.id) ? 'checked' : '';
+            return `<label class="wh-branch-link" style="grid-template-columns: auto 1fr;">
+                <input type="checkbox" data-pa-branch="${b.id}" ${checked} />
+                <span class="wh-branch-link__name">${escapeHtml(b.name)}</span>
+            </label>`;
+        }).join('');
+    }
+
+    function togglePaBranchLinksVisibility() {
+        if (!PA_ELS.branchLinksField || !PA_ELS.global) return;
+        PA_ELS.branchLinksField.style.display = PA_ELS.global.checked ? 'none' : '';
+    }
+
+    function openPaymentAccountAdd() {
+        PA_ELS.title.textContent = 'Add Payment Account';
+        PA_ELS.editId.value = '';
+        PA_ELS.form.reset();
+        PA_ELS.global.checked = false;
+        renderPaymentAccountBranchLinks(null);
+        togglePaBranchLinksVisibility();
+        PA_ELS.modal.classList.add('is-open');
+        setTimeout(() => PA_ELS.method.focus(), 40);
+    }
+
+    function openPaymentAccountEdit(id) {
+        const a = paymentAccountsCache.find((x) => x.id === id);
+        if (!a) return;
+        PA_ELS.title.textContent = 'Edit Payment Account';
+        PA_ELS.editId.value = id;
+        PA_ELS.method.value = a.method;
+        PA_ELS.provider.value = a.provider || '';
+        PA_ELS.name.value = a.account_name || '';
+        PA_ELS.number.value = a.account_number || '';
+        PA_ELS.notes.value = a.notes || '';
+        PA_ELS.global.checked = !!a.is_global;
+        renderPaymentAccountBranchLinks(id);
+        togglePaBranchLinksVisibility();
+        PA_ELS.modal.classList.add('is-open');
+    }
+
+    if (PA_ELS.addBtn) PA_ELS.addBtn.addEventListener('click', openPaymentAccountAdd);
+    if (PA_ELS.global) PA_ELS.global.addEventListener('change', togglePaBranchLinksVisibility);
+    if (PA_ELS.body) PA_ELS.body.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('[data-edit-pa]');
+        if (editBtn) { openPaymentAccountEdit(editBtn.dataset.editPa); return; }
+        const delBtn = e.target.closest('[data-del-pa]');
+        if (delBtn) deletePaymentAccount(delBtn.dataset.delPa);
+    });
+
+    if (PA_ELS.form) PA_ELS.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = PA_ELS.editId.value;
+        const method = PA_ELS.method.value;
+        const provider = PA_ELS.provider.value.trim();
+        const account_name = PA_ELS.name.value.trim();
+        const account_number = PA_ELS.number.value.trim();
+        const notes = PA_ELS.notes.value.trim();
+        const is_global = !!PA_ELS.global.checked;
+        if (!method || !provider || !account_name || !account_number) {
+            toast('Method, provider, name and number are all required.', 'error');
+            return;
+        }
+        const branch_ids = is_global ? [] : Array.from(PA_ELS.branchLinks.querySelectorAll('input[data-pa-branch]:checked')).map((cb) => cb.dataset.paBranch);
+        if (!is_global && branch_ids.length === 0) {
+            toast('Pick at least one branch — or tick "Available to all branches".', 'error');
+            return;
+        }
+        try {
+            if (id) {
+                await window.CH.paymentAccounts.update(id, { method, provider, account_name, account_number, notes, is_global });
+                if (!is_global) {
+                    await window.CH.paymentAccounts.replaceBranchLinks(id, branch_ids);
+                } else {
+                    await window.CH.paymentAccounts.replaceBranchLinks(id, []);
+                }
+                await window.CH.logs.record({ action: 'payment_account_updated', staff_id: session.id, staff_name: session.name, note: 'updated ' + provider + ' · ' + account_number });
+                toast('Payment account updated.', 'success');
+            } else {
+                await window.CH.paymentAccounts.add({ method, provider, account_name, account_number, notes, is_global, branch_ids, created_by: session.id });
+                await window.CH.logs.record({ action: 'payment_account_added', staff_id: session.id, staff_name: session.name, note: 'added ' + provider + ' · ' + account_number });
+                toast('Payment account added.', 'success');
+            }
+            PA_ELS.modal.classList.remove('is-open');
+            await loadPaymentAccounts();
+        } catch (err) {
+            console.error(err);
+            const msg = (err && err.message) || '';
+            if (msg.toLowerCase().includes('duplicate') || (err && err.code === '23505')) {
+                toast('That exact account is already registered.', 'error');
+            } else {
+                toast('Could not save: ' + (msg || 'unknown error'), 'error');
+            }
+        }
+    });
+
+    async function deletePaymentAccount(id) {
+        const a = paymentAccountsCache.find((x) => x.id === id);
+        if (!a) return;
+        if (!confirm('Delete ' + a.provider + ' · ' + a.account_number + '?\nTransfer requests that referenced it will keep their history but show "deleted" on this account.')) return;
+        try {
+            await window.CH.paymentAccounts.remove(id);
+            await window.CH.logs.record({ action: 'payment_account_deleted', staff_id: session.id, staff_name: session.name, note: 'deleted ' + a.provider + ' · ' + a.account_number });
+            toast('Payment account deleted.', 'success');
+            await loadPaymentAccounts();
+        } catch (err) {
+            toast('Could not delete: ' + (err.message || 'unknown error'), 'error');
+        }
+    }
+
+    /* ============================================================
        BRANCHES (admin)
        ============================================================ */
 
@@ -1662,7 +1850,7 @@
             if (m) m.classList.remove('is-open');
         });
     });
-    [els.branchModal, els.staffModal, WAREHOUSE_ELS.modal].filter(Boolean).forEach((m) => {
+    [els.branchModal, els.staffModal, WAREHOUSE_ELS.modal, PA_ELS.modal].filter(Boolean).forEach((m) => {
         m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('is-open'); });
     });
 
@@ -1989,6 +2177,110 @@
         }
     }
 
+    // Phase 2 — payment selection state for the active Request modal
+    let ptSourceAccountsCache = [];   // accounts available at the chosen source branch
+    let ptActiveSourceBranchId = null;
+
+    function ptCurrentStatus() {
+        const r = document.querySelector('input[name="ptPaymentStatus"]:checked');
+        return r ? r.value : '';
+    }
+
+    function ptUpdateFieldVisibility() {
+        const status = ptCurrentStatus();
+        const method = $('#ptPaymentMethod').value;
+        // Account dropdown (Paid + method != cash)
+        const accField = $('#ptAccountField');
+        const infoField = $('#ptAccountInfoField');
+        const affirmField = $('#ptAffirmationField');
+        const needsAccount = method && method !== 'cash';
+        if (accField)    accField.style.display    = (status === 'paid' && needsAccount)    ? '' : 'none';
+        if (infoField)   infoField.style.display   = (status === 'not_paid' && needsAccount) ? '' : 'none';
+        if (affirmField) affirmField.style.display = (status === 'paid')                     ? '' : 'none';
+        ptUpdateSubmitState();
+    }
+
+    function ptUpdateSubmitState() {
+        const btn = $('#ptSubmitBtn');
+        if (!btn) return;
+        const status = ptCurrentStatus();
+        if (status !== 'paid') {
+            btn.disabled = true;
+            if (status === 'not_paid') btn.textContent = 'Pay first, then mark as Paid';
+            else btn.textContent = 'Pick payment status';
+            return;
+        }
+        const affirmPaid = $('#ptAffirmPaid');
+        const affirmCancel = $('#ptAffirmCancel');
+        if (!affirmPaid || !affirmPaid.checked || !affirmCancel || !affirmCancel.checked) {
+            btn.disabled = true;
+            btn.textContent = 'Tick both confirmations';
+            return;
+        }
+        btn.disabled = false;
+        btn.textContent = 'Submit request';
+    }
+
+    function ptRenderAccountUI() {
+        const method = $('#ptPaymentMethod').value;
+        const status = ptCurrentStatus();
+        const accounts = (ptSourceAccountsCache || []).filter((a) => a.method === method);
+        const sel = $('#ptAccountSelect');
+        const infoBox = $('#ptAccountInfoBox');
+
+        // Dropdown (Paid)
+        if (sel) {
+            if (status === 'paid' && method && method !== 'cash') {
+                if (accounts.length === 0) {
+                    sel.innerHTML = '<option value="">No accounts registered — ask the Director</option>';
+                    sel.disabled = true;
+                } else {
+                    sel.innerHTML = ['<option value="" disabled selected>Pick the account you paid to</option>']
+                        .concat(accounts.map((a) => `<option value="${a.id}">${escapeHtml(a.provider)} · ${escapeHtml(a.account_number)} · ${escapeHtml(a.account_name)}</option>`))
+                        .join('');
+                    sel.disabled = false;
+                }
+            }
+        }
+
+        // Info box (Not paid)
+        if (infoBox) {
+            if (status === 'not_paid' && method && method !== 'cash') {
+                if (accounts.length === 0) {
+                    infoBox.className = 'pt-source-accounts is-empty';
+                    infoBox.innerHTML = '<div class="pt-source-accounts__title">No payment accounts registered for this method at the source branch.</div><div>Ask the Director to add one before requesting.</div>';
+                } else {
+                    infoBox.className = 'pt-source-accounts';
+                    infoBox.innerHTML = '<div class="pt-source-accounts__title">Pay to one of these accounts first:</div>' +
+                        accounts.map((a) => `
+                            <div class="pt-source-account">
+                                <div class="pt-source-account__provider">${escapeHtml(a.provider)}</div>
+                                <div class="pt-source-account__row">Account: <code>${escapeHtml(a.account_number)}</code></div>
+                                <div class="pt-source-account__row">Name: ${escapeHtml(a.account_name)}</div>
+                                ${a.notes ? '<div class="pt-source-account__row">Note: ' + escapeHtml(a.notes) + '</div>' : ''}
+                            </div>
+                        `).join('') +
+                        '<div class="pt-source-accounts__hint">Once paid, switch the toggle above to <b>Paid</b> and tell us which account you used.</div>';
+                }
+            }
+        }
+    }
+
+    async function ptLoadSourceAccounts(branchId) {
+        ptActiveSourceBranchId = branchId;
+        ptSourceAccountsCache = [];
+        if (!branchId || !window.CH || !window.CH.paymentAccounts) {
+            ptRenderAccountUI();
+            return;
+        }
+        try {
+            ptSourceAccountsCache = await window.CH.paymentAccounts.listForBranch(branchId);
+        } catch (_) {
+            ptSourceAccountsCache = [];
+        }
+        ptRenderAccountUI();
+    }
+
     function openProductTransferRequest(p) {
         if (!window.CH || !window.CH.productTransfers) {
             toast('Transfer requests not enabled yet. Ask the Director to run the latest setup.', 'error');
@@ -2002,6 +2294,13 @@
         $('#ptProductId').value = p.id;
         $('#ptQty').value = '';
         $('#ptProviderField').style.display = 'none';
+        ptSourceAccountsCache = [];
+        ptActiveSourceBranchId = null;
+        // Reset payment-flow state
+        document.querySelectorAll('input[name="ptPaymentStatus"]').forEach((r) => { r.checked = false; });
+        const aff1 = $('#ptAffirmPaid'); if (aff1) aff1.checked = false;
+        const aff2 = $('#ptAffirmCancel'); if (aff2) aff2.checked = false;
+        ptUpdateFieldVisibility();
         // Product summary card
         const summary = $('#ptProductSummary');
         const ph = '<div class="pt-product-summary__ph"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
@@ -2021,7 +2320,7 @@
                         const wh = s.warehouses || {};
                         const br = s.branches || {};
                         const label = `${wh.name || 'Warehouse'} · ${br.name || ''} · ${s.stock} in stock`;
-                        return `<option value="${s.warehouse_id}" data-stock="${s.stock}">${escapeHtml(label)}</option>`;
+                        return `<option value="${s.warehouse_id}" data-stock="${s.stock}" data-branch-id="${s.branch_id || ''}">${escapeHtml(label)}</option>`;
                     })).join('');
             })
             .catch(() => {
@@ -2042,7 +2341,7 @@
         setTimeout(() => $('#ptQty').focus(), 50);
     }
 
-    // Payment method -> provider sub-dropdown
+    // Payment method -> provider sub-dropdown + payment-flow visibility
     const ptMethodEl = document.getElementById('ptPaymentMethod');
     if (ptMethodEl) ptMethodEl.addEventListener('change', () => {
         const method = ptMethodEl.value;
@@ -2060,6 +2359,31 @@
             sel.required = false;
             wrap.style.display = 'none';
         }
+        // Method changed -> rebuild account dropdown / info box
+        ptRenderAccountUI();
+        ptUpdateFieldVisibility();
+    });
+
+    // Payment status radio (Paid / Not paid)
+    document.querySelectorAll('input[name="ptPaymentStatus"]').forEach((r) => {
+        r.addEventListener('change', () => {
+            ptRenderAccountUI();
+            ptUpdateFieldVisibility();
+        });
+    });
+
+    // Affirmation checkboxes -> re-evaluate submit state
+    const _ptAffPaid = document.getElementById('ptAffirmPaid');
+    const _ptAffCancel = document.getElementById('ptAffirmCancel');
+    if (_ptAffPaid)   _ptAffPaid.addEventListener('change', ptUpdateSubmitState);
+    if (_ptAffCancel) _ptAffCancel.addEventListener('change', ptUpdateSubmitState);
+
+    // Source warehouse change -> load that branch's payment accounts
+    const _ptFromWh = document.getElementById('ptFromWarehouse');
+    if (_ptFromWh) _ptFromWh.addEventListener('change', () => {
+        const opt = _ptFromWh.selectedOptions[0];
+        const branchId = opt && opt.dataset.branchId ? opt.dataset.branchId : null;
+        ptLoadSourceAccounts(branchId);
     });
 
     // Staff ID input -> live autofill of name
@@ -2105,6 +2429,10 @@
         const delivery = $('#ptDeliveryType').value;
         const code = ($('#ptRequesterCode').value || '').trim().toUpperCase();
         const note = ($('#ptNote').value || '').trim();
+        const status = ptCurrentStatus();
+        const accountId = ($('#ptAccountSelect') && $('#ptAccountSelect').value) || null;
+        const affPaid = $('#ptAffirmPaid') && $('#ptAffirmPaid').checked;
+        const affCancel = $('#ptAffirmCancel') && $('#ptAffirmCancel').checked;
         // Validation (every field required)
         if (!productId || !qty || qty <= 0 || !fromWh || !method || !delivery || !code) {
             toast('Please complete every field.', 'error');
@@ -2112,6 +2440,18 @@
         }
         if ((method === 'momo' || method === 'bank') && !provider) {
             toast('Please pick a provider for the chosen payment method.', 'error');
+            return;
+        }
+        if (status !== 'paid') {
+            toast('You must pay first and mark the request as Paid before submitting.', 'error');
+            return;
+        }
+        if (!affPaid || !affCancel) {
+            toast('Tick both confirmation boxes.', 'error');
+            return;
+        }
+        if (method !== 'cash' && !accountId) {
+            toast('Pick which account you paid to.', 'error');
             return;
         }
         // Staff code must match a real staff_code AND match the signed-in user
@@ -2142,6 +2482,15 @@
                 requester_code: code,
                 note: note || null,
             });
+            // Attach the chosen payment_account_id to the new row (Cash skips)
+            if (accountId && window.CH.supabase) {
+                try {
+                    await window.CH.supabase
+                        .from('product_transfer_requests')
+                        .update({ payment_account_id: accountId })
+                        .eq('code', ptCode);
+                } catch (_) { /* best-effort: the request still succeeded */ }
+            }
             // Log it
             try {
                 await window.CH.logs.record({
@@ -3825,7 +4174,7 @@
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
     const VIEWS_BY_ROLE = {
-        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements'],
+        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts'],
         branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs'],
         warehouse_manager: ['products','messages','announcements'],
         staff:             ['products','showroom','reports','messages','announcements'],
