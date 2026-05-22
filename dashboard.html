@@ -1814,6 +1814,51 @@
         .wh-branch-link__default { display: inline-flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--c-ink-4); }
         .wh-branch-link__default input[type=radio] { accent-color: var(--c-accent); cursor: pointer; }
 
+        /* ---------- PRODUCT TRANSFER (Phase 2) ---------- */
+        .pdetail__request {
+            width: 100%;
+            justify-content: center;
+            gap: 8px;
+            font-weight: 600;
+        }
+        .pdetail__request svg { width: 18px; height: 18px; }
+
+        .pt-product-summary {
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 12px 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .pt-product-summary img,
+        .pt-product-summary .pt-product-summary__ph {
+            width: 48px; height: 48px;
+            object-fit: contain;
+            background: #fff;
+            border-radius: 8px;
+            border: 1px solid var(--c-line);
+            padding: 4px;
+            flex-shrink: 0;
+        }
+        .pt-product-summary__ph {
+            display: grid; place-items: center;
+            color: var(--c-ink-5);
+        }
+        .pt-product-summary__info { min-width: 0; flex: 1; }
+        .pt-product-summary__title { font-weight: 600; color: var(--c-ink-2); font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .pt-product-summary__sub   { font-size: 0.78rem; color: var(--c-ink-4); margin-top: 2px; }
+
+        .pt-staff-resolve {
+            display: block;
+            margin-top: 6px;
+            font-size: 0.78rem;
+            color: var(--c-ink-4);
+        }
+        .pt-staff-resolve.is-ok    { color: var(--c-success); font-weight: 600; }
+        .pt-staff-resolve.is-error { color: var(--c-danger);  font-weight: 600; }
+
         /* ---------- DRAFTS bulk-action bar ---------- */
         .drafts-bulk-bar {
             display: flex;
@@ -3926,7 +3971,92 @@
                 <div class="pdetail__price" id="pdetailPrice">GHS 0.00</div>
                 <div id="pdetailMetaPills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
                 <div class="pdetail__rows" id="pdetailRows"></div>
+                <button type="button" class="btn btn--primary pdetail__request" id="pdetailRequestBtn" hidden style="margin-top: 14px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="M12 5l7 7-7 7"/></svg>
+                    <span>Request from another branch</span>
+                </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--      PRODUCT TRANSFER MODAL    -->
+    <!-- ============================== -->
+    <div class="modal" id="ptRequestModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3 id="ptRequestTitle">Request product from another branch</h3>
+                    <p>Fill in every field. The destination branch will be notified once received.</p>
+                </div>
+                <button class="modal__close" data-close="ptRequestModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="ptRequestForm">
+                <div class="modal__body">
+                    <input type="hidden" id="ptProductId" />
+
+                    <div class="field--full">
+                        <label>Product</label>
+                        <div id="ptProductSummary" class="pt-product-summary"></div>
+                    </div>
+
+                    <div>
+                        <label for="ptQty">Quantity needed<span class="req">*</span></label>
+                        <input type="number" id="ptQty" min="1" placeholder="e.g. 3" required />
+                    </div>
+
+                    <div>
+                        <label for="ptFromWarehouse">From which warehouse<span class="req">*</span></label>
+                        <select id="ptFromWarehouse" required>
+                            <option value="">— Loading availability… —</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="ptPaymentMethod">Payment method<span class="req">*</span></label>
+                        <select id="ptPaymentMethod" required>
+                            <option value="" disabled selected>Select method</option>
+                            <option value="cash">Cash</option>
+                            <option value="momo">Mobile Money (MoMo)</option>
+                            <option value="pos">POS terminal</option>
+                            <option value="bank">Bank transfer</option>
+                        </select>
+                    </div>
+
+                    <div id="ptProviderField" style="display:none;">
+                        <label for="ptPaymentProvider">Provider<span class="req">*</span></label>
+                        <select id="ptPaymentProvider">
+                            <option value="" disabled selected>Select provider</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="ptDeliveryType">Delivery<span class="req">*</span></label>
+                        <select id="ptDeliveryType" required>
+                            <option value="" disabled selected>Select delivery</option>
+                            <option value="internal">Internal (our courier)</option>
+                            <option value="external">External (3rd-party / pickup)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="ptRequesterCode">Your staff ID<span class="req">*</span></label>
+                        <input type="text" id="ptRequesterCode" placeholder="e.g. CH-A-007" autocomplete="off" required />
+                        <small id="ptRequesterName" class="pt-staff-resolve">Type your code to confirm your name</small>
+                    </div>
+
+                    <div class="field--full">
+                        <label for="ptNote">Note <span class="hint">(optional)</span></label>
+                        <textarea id="ptNote" rows="2" placeholder="Anything the source warehouse should know"></textarea>
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="ptRequestModal">Cancel</button>
+                    <button type="submit" class="btn btn--primary" id="ptSubmitBtn">Submit request</button>
+                </footer>
+            </form>
         </div>
     </div>
 

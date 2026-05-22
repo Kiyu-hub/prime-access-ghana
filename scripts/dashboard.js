@@ -1924,12 +1924,232 @@
         if (p.created_at) rows.push(['Added', new Date(p.created_at).toLocaleDateString()]);
         els.pdetailRows.innerHTML = rows.map(([k, v]) => `<div class="pdetail__row"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
 
+        // "Request from another branch" — show only when:
+        //   - viewer can request (staff/branch_manager/admin, NOT warehouse_manager)
+        //   - this product row's stock is 0
+        //   - AND at least one other warehouse has stock > 0 for the same item_no
+        const reqBtn = $('#pdetailRequestBtn');
+        if (reqBtn) {
+            reqBtn.hidden = true;
+            const role = currentRole();
+            const canRequest = role !== 'warehouse_manager';
+            if (canRequest && stock <= 0 && p.item_no && window.CH && window.CH.productTransfers) {
+                window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null)
+                    .then((sources) => {
+                        if (sources && sources.length > 0 && activePdetailProduct && activePdetailProduct.id === p.id) {
+                            reqBtn.hidden = false;
+                        }
+                    })
+                    .catch(() => { /* table not migrated yet — silent */ });
+            }
+        }
+
         els.pdetail.classList.add('is-open');
     }
     function closeProductDetail() {
         els.pdetail.classList.remove('is-open');
         activePdetailProduct = null;
     }
+
+    /* ============================================================
+       PRODUCT TRANSFER REQUEST (Phase 2)
+       ============================================================ */
+
+    const PT_PROVIDERS = {
+        momo: ['MTN MoMo', 'Vodafone Cash', 'AirtelTigo Money'],
+        bank: ['GCB Bank', 'Stanbic Bank', 'Ecobank', 'Fidelity Bank', 'CalBank', 'Zenith Bank', 'Access Bank', 'Absa Bank', 'UMB', 'GTBank', 'Republic Bank'],
+    };
+
+    function openProductTransferRequest(p) {
+        if (!window.CH || !window.CH.productTransfers) {
+            toast('Transfer requests not enabled yet. Ask the Director to run the latest setup.', 'error');
+            return;
+        }
+        const modal = $('#ptRequestModal');
+        if (!modal) return;
+        // Reset form
+        const form = $('#ptRequestForm');
+        if (form) form.reset();
+        $('#ptProductId').value = p.id;
+        $('#ptQty').value = '';
+        $('#ptProviderField').style.display = 'none';
+        // Product summary card
+        const summary = $('#ptProductSummary');
+        const ph = '<div class="pt-product-summary__ph"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
+        const img = p.image_url ? `<img src="${escapeAttr(p.image_url)}" alt="" />` : ph;
+        summary.innerHTML = `${img}<div class="pt-product-summary__info"><div class="pt-product-summary__title">${escapeHtml(p.description || '—')}</div><div class="pt-product-summary__sub">${escapeHtml(p.item_no || '— no code —')}</div></div>`;
+        // Populate source warehouse dropdown
+        const fromSel = $('#ptFromWarehouse');
+        fromSel.innerHTML = '<option value="">Loading availability…</option>';
+        window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null)
+            .then((sources) => {
+                if (!sources || sources.length === 0) {
+                    fromSel.innerHTML = '<option value="">No other branch has stock</option>';
+                    return;
+                }
+                fromSel.innerHTML = ['<option value="" disabled selected>Pick a warehouse</option>']
+                    .concat(sources.map((s) => {
+                        const wh = s.warehouses || {};
+                        const br = s.branches || {};
+                        const label = `${wh.name || 'Warehouse'} · ${br.name || ''} · ${s.stock} in stock`;
+                        return `<option value="${s.warehouse_id}" data-stock="${s.stock}">${escapeHtml(label)}</option>`;
+                    })).join('');
+            })
+            .catch(() => {
+                fromSel.innerHTML = '<option value="">Could not load sources</option>';
+            });
+        // Pre-fill requester staff ID with the signed-in user's code if known
+        if (session && session.staff_code) {
+            $('#ptRequesterCode').value = session.staff_code;
+            $('#ptRequesterName').textContent = session.name || '';
+            $('#ptRequesterName').classList.remove('is-error');
+            $('#ptRequesterName').classList.add('is-ok');
+        } else {
+            $('#ptRequesterCode').value = '';
+            $('#ptRequesterName').textContent = 'Type your code to confirm your name';
+            $('#ptRequesterName').classList.remove('is-ok','is-error');
+        }
+        modal.classList.add('is-open');
+        setTimeout(() => $('#ptQty').focus(), 50);
+    }
+
+    // Payment method -> provider sub-dropdown
+    const ptMethodEl = document.getElementById('ptPaymentMethod');
+    if (ptMethodEl) ptMethodEl.addEventListener('change', () => {
+        const method = ptMethodEl.value;
+        const wrap = $('#ptProviderField');
+        const sel = $('#ptPaymentProvider');
+        const providers = PT_PROVIDERS[method];
+        if (providers && providers.length) {
+            sel.innerHTML = ['<option value="" disabled selected>Select provider</option>']
+                .concat(providers.map((p) => `<option value="${escapeAttr(p)}">${escapeHtml(p)}</option>`))
+                .join('');
+            sel.required = true;
+            wrap.style.display = '';
+        } else {
+            sel.innerHTML = '';
+            sel.required = false;
+            wrap.style.display = 'none';
+        }
+    });
+
+    // Staff ID input -> live autofill of name
+    const ptCodeEl = document.getElementById('ptRequesterCode');
+    if (ptCodeEl) {
+        let ptCodeDebounce;
+        ptCodeEl.addEventListener('input', () => {
+            const code = (ptCodeEl.value || '').trim().toUpperCase();
+            const out = $('#ptRequesterName');
+            clearTimeout(ptCodeDebounce);
+            if (!code) {
+                out.textContent = 'Type your code to confirm your name';
+                out.classList.remove('is-ok','is-error');
+                return;
+            }
+            ptCodeDebounce = setTimeout(async () => {
+                try {
+                    const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+                    if (match) {
+                        out.textContent = match.name + (match.role ? ' · ' + match.role.replace('_',' ') : '');
+                        out.classList.add('is-ok');
+                        out.classList.remove('is-error');
+                    } else {
+                        out.textContent = 'No staff with that code';
+                        out.classList.add('is-error');
+                        out.classList.remove('is-ok');
+                    }
+                } catch (_) { /* silent */ }
+            }, 250);
+        });
+    }
+
+    // Submit handler
+    const ptForm = document.getElementById('ptRequestForm');
+    if (ptForm) ptForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const submitBtn = $('#ptSubmitBtn');
+        const productId = $('#ptProductId').value;
+        const qty = parseInt($('#ptQty').value, 10) || 0;
+        const fromWh = $('#ptFromWarehouse').value;
+        const method = $('#ptPaymentMethod').value;
+        const provider = ($('#ptPaymentProvider') && $('#ptPaymentProvider').value) || null;
+        const delivery = $('#ptDeliveryType').value;
+        const code = ($('#ptRequesterCode').value || '').trim().toUpperCase();
+        const note = ($('#ptNote').value || '').trim();
+        // Validation (every field required)
+        if (!productId || !qty || qty <= 0 || !fromWh || !method || !delivery || !code) {
+            toast('Please complete every field.', 'error');
+            return;
+        }
+        if ((method === 'momo' || method === 'bank') && !provider) {
+            toast('Please pick a provider for the chosen payment method.', 'error');
+            return;
+        }
+        // Staff code must match a real staff_code AND match the signed-in user
+        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+        if (!match) { toast('Staff ID not recognised.', 'error'); return; }
+        if (match.id !== session.id) {
+            toast('Staff ID does not match your signed-in user.', 'error');
+            return;
+        }
+        // Max qty check against the dropdown's available stock
+        const opt = $('#ptFromWarehouse').selectedOptions[0];
+        const maxStock = opt ? Number(opt.dataset.stock) : 0;
+        if (qty > maxStock) {
+            toast('Source warehouse only has ' + maxStock + ' available.', 'error');
+            return;
+        }
+        try {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting…';
+            const ptCode = await window.CH.productTransfers.create({
+                product_id: productId,
+                from_warehouse_id: fromWh,
+                qty,
+                payment_method: method,
+                payment_provider: provider,
+                delivery_type: delivery,
+                requester_staff_id: session.id,
+                requester_code: code,
+                note: note || null,
+            });
+            // Log it
+            try {
+                await window.CH.logs.record({
+                    product_id: productId,
+                    action: 'product_transfer_requested',
+                    branch_id: session.branch_id,
+                    branch_name: session.branch_name,
+                    staff_id: session.id,
+                    staff_name: session.name,
+                    note: ptCode + ' · qty ' + qty + ' · pay ' + method + (provider ? ' (' + provider + ')' : ''),
+                });
+            } catch (_) {}
+            toast('Transfer requested · ' + ptCode, 'success');
+            $('#ptRequestModal').classList.remove('is-open');
+            // Refresh products list so the new pending request is reflected
+            if (currentView === 'products') await loadProducts();
+        } catch (err) {
+            console.error(err);
+            toast('Could not create transfer: ' + (err.message || 'unknown error'), 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit request';
+        }
+    });
+
+    // Click on the Request button inside the product detail modal
+    const ptRequestBtn = document.getElementById('pdetailRequestBtn');
+    if (ptRequestBtn) ptRequestBtn.addEventListener('click', () => {
+        if (activePdetailProduct) {
+            els.pdetail.classList.remove('is-open');
+            openProductTransferRequest(activePdetailProduct);
+        }
+    });
+
+    // Close handler for the request modal
+    const ptModal = document.getElementById('ptRequestModal');
+    if (ptModal) ptModal.addEventListener('click', (e) => { if (e.target === ptModal) ptModal.classList.remove('is-open'); });
     els.pdetailClose.addEventListener('click', closeProductDetail);
     els.pdetail.addEventListener('click', (e) => { if (e.target === els.pdetail) closeProductDetail(); });
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && els.pdetail.classList.contains('is-open')) closeProductDetail(); });
