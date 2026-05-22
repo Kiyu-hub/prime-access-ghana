@@ -290,6 +290,7 @@
         if (view === 'taxonomy') loadTaxonomy();
         if (view === 'warehouses') loadWarehouses();
         if (view === 'payment-accounts') loadPaymentAccounts();
+        if (view === 'product-transfers') loadProductTransfers();
     }
 
     /* ---------- logout ---------- */
@@ -4378,12 +4379,12 @@
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
     const VIEWS_BY_ROLE = {
-        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts'],
+        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers'],
         // Branch Manager: normal privileges + warehouse VIEW (read-only,
         // scoped to their branch). No add/edit/delete — that stays admin.
-        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses'],
-        warehouse_manager: ['products','messages','announcements'],
-        staff:             ['products','showroom','reports','messages','announcements'],
+        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','product-transfers'],
+        warehouse_manager: ['products','messages','announcements','product-transfers'],
+        staff:             ['products','showroom','reports','messages','announcements','product-transfers'],
     };
 
     function currentRole() {
@@ -4449,6 +4450,329 @@
         } catch (_) { /* silent */ }
     }
 
+    /* ============================================================
+       PRODUCT TRANSFERS — inbox view (Phase 2 Commit 4)
+       ============================================================ */
+    let allTransfersCache = [];
+    let currentTransfersTab = 'incoming';
+
+    const PT_INBOX = {
+        body:  $('#productTransfersBody'),
+        empty: $('#productTransfersEmpty'),
+        tabs:  $$('.pt-tab'),
+        badge: $('#navTransfersBadge'),
+        // Receive
+        receiveModal:  $('#ptReceiveModal'),
+        receiveForm:   $('#ptReceiveForm'),
+        receiveId:     $('#ptReceiveId'),
+        receiveSummary:$('#ptReceiveSummary'),
+        receiveQty:    $('#ptReceiveQty'),
+        receiveQtyHint:$('#ptReceiveQtyHint'),
+        receiverCode:  $('#ptReceiverCode'),
+        receiverName:  $('#ptReceiverName'),
+        receivePayConf:$('#ptReceivePaymentConfirmed'),
+        receiveSubmit: $('#ptReceiveSubmit'),
+        // Cancel
+        cancelModal:   $('#ptCancelModal'),
+        cancelForm:    $('#ptCancelForm'),
+        cancelId:      $('#ptCancelId'),
+        cancelReason:  $('#ptCancelReason'),
+    };
+
+    const PT_STATUS_LABELS = { pending: 'Pending', received: 'Received', cancelled: 'Cancelled' };
+    const PT_STATUS_PILLS  = { pending: 'pill--pt-pending', received: 'pill--pt-received', cancelled: 'pill--pt-cancelled' };
+
+    function isTransferIncoming(t) {
+        const role = currentRole();
+        const branchScope = getManagedBranchIds();
+        if (role === 'admin' || branchScope === 'ALL') return !!t.to_branch_id; // Director sees both, classify
+        return Array.isArray(branchScope) && branchScope.includes(t.to_branch_id);
+    }
+    function isTransferOutgoing(t) {
+        const role = currentRole();
+        const whScope = getManagedWarehouseIds();
+        if (role === 'admin' || whScope === 'ALL') return !!t.from_warehouse_id;
+        return Array.isArray(whScope) && whScope.includes(t.from_warehouse_id);
+    }
+
+    async function loadProductTransfers() {
+        if (!window.CH || !window.CH.productTransfers) {
+            if (PT_INBOX.body) PT_INBOX.body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--c-ink-5);">Transfers not enabled yet. Ask the Director to run the latest setup.</td></tr>';
+            return;
+        }
+        try {
+            const role = currentRole();
+            let opts = { limit: 500 };
+            // For non-admins, pre-filter on the server when possible
+            const branchScope = getManagedBranchIds();
+            const whScope = getManagedWarehouseIds();
+            if (role !== 'admin' && branchScope !== 'ALL' && whScope !== 'ALL') {
+                // Fetch unfiltered (a single staff member could be both
+                // requester at one branch and warehouse manager elsewhere).
+                // We filter client-side instead.
+                opts = { limit: 500 };
+            }
+            const all = await window.CH.productTransfers.list(opts);
+            // Visibility filter: admin sees all; otherwise show only the
+            // transfers the user is involved in (requester / incoming /
+            // outgoing).
+            if (role === 'admin' || branchScope === 'ALL' || whScope === 'ALL') {
+                allTransfersCache = all;
+            } else {
+                const branchSet = new Set(branchScope);
+                const whSet = new Set(whScope);
+                allTransfersCache = all.filter((t) => {
+                    return (t.requested_by === session.id) ||
+                           branchSet.has(t.to_branch_id) ||
+                           whSet.has(t.from_warehouse_id);
+                });
+            }
+            renderProductTransfers();
+            updateTransfersBadge();
+        } catch (err) {
+            console.error(err);
+            if (isMissingTableError(err)) {
+                if (PT_INBOX.body) PT_INBOX.body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--c-ink-5);">Transfers not enabled yet. Ask the Director to run the latest setup.</td></tr>';
+            } else {
+                toast('Could not load transfers: ' + (err.message || 'unknown'), 'error');
+            }
+        }
+    }
+
+    function renderProductTransfers() {
+        if (!PT_INBOX.body) return;
+        // Filter to the active tab
+        let rows;
+        if (currentTransfersTab === 'incoming') {
+            rows = allTransfersCache.filter(isTransferIncoming);
+        } else if (currentTransfersTab === 'outgoing') {
+            rows = allTransfersCache.filter(isTransferOutgoing);
+        } else {
+            rows = allTransfersCache.slice();
+        }
+        if (rows.length === 0) {
+            PT_INBOX.body.innerHTML = '';
+            PT_INBOX.empty.style.display = 'block';
+            return;
+        }
+        PT_INBOX.empty.style.display = 'none';
+        const role = currentRole();
+        PT_INBOX.body.innerHTML = rows.map((t) => {
+            const fromWh = t.from_warehouse || {};
+            const toBr = t.to_branch || {};
+            const route = `${escapeHtml(fromWh.name || '?')} → ${escapeHtml(toBr.name || '?')}`;
+            const payment = `${escapeHtml((t.payment_method || '').toUpperCase())}${t.payment_provider ? ' · ' + escapeHtml(t.payment_provider) : ''}`;
+            const statusLabel = PT_STATUS_LABELS[t.status] || t.status;
+            const statusPill = PT_STATUS_PILLS[t.status] || 'pill';
+            const when = relTime(t.requested_at);
+            // Action buttons
+            const canReceive = t.status === 'pending' && isTransferIncoming(t);
+            const canCancel  = t.status === 'pending' && (t.requested_by === session.id || isTransferIncoming(t) || isTransferOutgoing(t) || role === 'admin');
+            const actions = [
+                canReceive ? `<button class="btn btn--success" data-pt-receive="${t.id}" style="padding:4px 10px;font-size:0.78rem;height:auto;">Mark received</button>` : '',
+                canCancel  ? `<button class="btn" data-pt-cancel="${t.id}" style="padding:4px 10px;font-size:0.78rem;height:auto;background:#fff;border:1px solid var(--c-danger);color:var(--c-danger);">Cancel</button>` : '',
+            ].filter(Boolean).join(' ');
+            return `<tr>
+                <td><span class="itemno">${escapeHtml(t.code)}</span></td>
+                <td>${escapeHtml(t.description || '')}${t.item_no ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(t.item_no) + '</small>' : ''}</td>
+                <td><strong>${t.qty_requested}</strong>${t.qty_received != null ? ' / ' + t.qty_received + ' rcvd' : ''}</td>
+                <td>${route}</td>
+                <td>${payment}</td>
+                <td><span class="pill ${statusPill}">${statusLabel}</span></td>
+                <td>${when}</td>
+                <td style="text-align:right;">${actions || '<span style="color:var(--c-ink-5);font-size:0.78rem;">—</span>'}</td>
+            </tr>`;
+        }).join('');
+    }
+
+    function updateTransfersBadge() {
+        if (!PT_INBOX.badge) return;
+        // Show pending count for incoming transfers — these need action
+        const role = currentRole();
+        if (role === 'warehouse_manager') {
+            const n = allTransfersCache.filter((t) => t.status === 'pending' && isTransferOutgoing(t)).length;
+            if (n > 0) { PT_INBOX.badge.textContent = String(n); PT_INBOX.badge.hidden = false; } else { PT_INBOX.badge.hidden = true; }
+        } else {
+            const n = allTransfersCache.filter((t) => t.status === 'pending' && isTransferIncoming(t)).length;
+            if (n > 0) { PT_INBOX.badge.textContent = String(n); PT_INBOX.badge.hidden = false; } else { PT_INBOX.badge.hidden = true; }
+        }
+    }
+
+    // Tab clicks
+    PT_INBOX.tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+            PT_INBOX.tabs.forEach((b) => b.classList.toggle('is-active', b === btn));
+            currentTransfersTab = btn.dataset.ptTab;
+            renderProductTransfers();
+        });
+    });
+
+    // Row clicks (Receive / Cancel)
+    if (PT_INBOX.body) PT_INBOX.body.addEventListener('click', (e) => {
+        const recvBtn = e.target.closest('[data-pt-receive]');
+        if (recvBtn) { openReceiveModal(recvBtn.dataset.ptReceive); return; }
+        const cancelBtn = e.target.closest('[data-pt-cancel]');
+        if (cancelBtn) { openCancelModal(cancelBtn.dataset.ptCancel); return; }
+    });
+
+    function openReceiveModal(id) {
+        const t = allTransfersCache.find((x) => x.id === id);
+        if (!t) return;
+        PT_INBOX.receiveId.value = id;
+        PT_INBOX.receiveQty.value = t.qty_requested;
+        PT_INBOX.receiveQty.max = t.qty_requested;
+        PT_INBOX.receiveQtyHint.textContent = 'Requested: ' + t.qty_requested + '. You can receive less if the source shipped a smaller amount.';
+        PT_INBOX.receiveQtyHint.classList.remove('is-ok', 'is-error');
+        PT_INBOX.receivePayConf.checked = false;
+        // Pre-fill code with session code if known
+        if (session.staff_code) {
+            PT_INBOX.receiverCode.value = session.staff_code;
+            PT_INBOX.receiverName.textContent = session.name || '';
+            PT_INBOX.receiverName.classList.add('is-ok'); PT_INBOX.receiverName.classList.remove('is-error');
+        } else {
+            PT_INBOX.receiverCode.value = '';
+            PT_INBOX.receiverName.textContent = 'Type your code to confirm your name';
+            PT_INBOX.receiverName.classList.remove('is-ok', 'is-error');
+        }
+        // Summary
+        const fromWh = t.from_warehouse || {};
+        const toBr = t.to_branch || {};
+        PT_INBOX.receiveSummary.innerHTML = `
+            <div class="pt-receive-summary__row"><span>Code</span><b>${escapeHtml(t.code)}</b></div>
+            <div class="pt-receive-summary__row"><span>Product</span><b>${escapeHtml(t.description || '—')}${t.item_no ? ' (' + escapeHtml(t.item_no) + ')' : ''}</b></div>
+            <div class="pt-receive-summary__row"><span>Quantity requested</span><b>${t.qty_requested}</b></div>
+            <div class="pt-receive-summary__row"><span>Route</span><b>${escapeHtml(fromWh.name || '?')} → ${escapeHtml(toBr.name || '?')}</b></div>
+            <div class="pt-receive-summary__row"><span>Payment</span><b>${escapeHtml((t.payment_method || '').toUpperCase())}${t.payment_provider ? ' · ' + escapeHtml(t.payment_provider) : ''}</b></div>
+            <div class="pt-receive-summary__row"><span>Requester</span><b>${escapeHtml(t.requested_by_code || '—')}</b></div>
+        `;
+        PT_INBOX.receiveModal.classList.add('is-open');
+    }
+
+    function openCancelModal(id) {
+        PT_INBOX.cancelId.value = id;
+        PT_INBOX.cancelReason.value = '';
+        PT_INBOX.cancelModal.classList.add('is-open');
+        setTimeout(() => PT_INBOX.cancelReason.focus(), 40);
+    }
+
+    // Receiver code → live name resolution (same pattern as request modal)
+    if (PT_INBOX.receiverCode) {
+        let debounce;
+        PT_INBOX.receiverCode.addEventListener('input', () => {
+            const code = (PT_INBOX.receiverCode.value || '').trim().toUpperCase();
+            const out = PT_INBOX.receiverName;
+            clearTimeout(debounce);
+            if (!code) {
+                out.textContent = 'Type your code to confirm your name';
+                out.classList.remove('is-ok','is-error');
+                return;
+            }
+            debounce = setTimeout(() => {
+                const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+                if (match) {
+                    out.textContent = match.name + (match.role ? ' · ' + match.role.replace('_',' ') : '');
+                    out.classList.add('is-ok'); out.classList.remove('is-error');
+                } else {
+                    out.textContent = 'No staff with that code';
+                    out.classList.add('is-error'); out.classList.remove('is-ok');
+                }
+            }, 250);
+        });
+    }
+
+    // Receive submit
+    if (PT_INBOX.receiveForm) PT_INBOX.receiveForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = PT_INBOX.receiveId.value;
+        const t = allTransfersCache.find((x) => x.id === id);
+        if (!t) return;
+        const qty = parseInt(PT_INBOX.receiveQty.value, 10) || 0;
+        const code = (PT_INBOX.receiverCode.value || '').trim().toUpperCase();
+        const paymentConfirmed = !!PT_INBOX.receivePayConf.checked;
+        if (!qty || qty <= 0 || qty > t.qty_requested) { toast('Enter a quantity between 1 and ' + t.qty_requested + '.', 'error'); return; }
+        if (!code) { toast('Enter your staff ID.', 'error'); return; }
+        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+        if (!match || match.id !== session.id) {
+            toast('Staff ID must match your signed-in user.', 'error');
+            return;
+        }
+        try {
+            PT_INBOX.receiveSubmit.disabled = true;
+            PT_INBOX.receiveSubmit.textContent = 'Confirming…';
+            await window.CH.productTransfers.receive(id, {
+                receiver_staff_id: session.id,
+                receiver_code: code,
+                qty_received: qty,
+                payment_confirmed: paymentConfirmed,
+            });
+            try {
+                await window.CH.logs.record({
+                    product_id: t.product_id, item_no: t.item_no,
+                    action: 'product_transfer_received',
+                    branch_id: t.to_branch_id, branch_name: (t.to_branch && t.to_branch.name),
+                    staff_id: session.id, staff_name: session.name,
+                    note: t.code + ' · qty ' + qty + (paymentConfirmed ? ' · payment confirmed' : ' · payment NOT confirmed'),
+                });
+            } catch (_) {}
+            toast('Transfer received. Stock moved.', 'success');
+            PT_INBOX.receiveModal.classList.remove('is-open');
+            await loadProductTransfers();
+            if (currentView === 'products') await loadProducts();
+        } catch (err) {
+            console.error(err);
+            toast('Could not receive: ' + (err.message || 'unknown'), 'error');
+        } finally {
+            PT_INBOX.receiveSubmit.disabled = false;
+            PT_INBOX.receiveSubmit.textContent = 'Confirm receipt';
+        }
+    });
+
+    // Cancel submit
+    if (PT_INBOX.cancelForm) PT_INBOX.cancelForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = PT_INBOX.cancelId.value;
+        const t = allTransfersCache.find((x) => x.id === id);
+        const reason = (PT_INBOX.cancelReason.value || '').trim();
+        if (!reason) { toast('Please enter a reason.', 'error'); return; }
+        try {
+            await window.CH.productTransfers.cancel(id, { by_staff_id: session.id, reason });
+            try {
+                await window.CH.logs.record({
+                    product_id: t && t.product_id, item_no: t && t.item_no,
+                    action: 'product_transfer_cancelled',
+                    branch_id: t && t.to_branch_id, branch_name: (t && t.to_branch && t.to_branch.name),
+                    staff_id: session.id, staff_name: session.name,
+                    note: (t && t.code) + ' · ' + reason,
+                });
+            } catch (_) {}
+            toast('Transfer cancelled.', 'success');
+            PT_INBOX.cancelModal.classList.remove('is-open');
+            await loadProductTransfers();
+        } catch (err) {
+            toast('Could not cancel: ' + (err.message || 'unknown'), 'error');
+        }
+    });
+
+    // Click-outside closes the receive + cancel modals (mirrors other modals)
+    [PT_INBOX.receiveModal, PT_INBOX.cancelModal].filter(Boolean).forEach((m) => {
+        m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('is-open'); });
+    });
+
+    // Realtime: refresh inbox + badge when ANY transfer changes
+    function setupTransfersRealtime() {
+        if (!window.CH || !window.CH.productTransfers) return;
+        try {
+            window.CH.productTransfers.subscribe(() => {
+                // Only refresh if user can see transfers
+                const role = currentRole();
+                if (!VIEWS_BY_ROLE[role] || !VIEWS_BY_ROLE[role].includes('product-transfers')) return;
+                // Refresh quietly — cache + badge update; only re-render
+                // the table when the inbox view is currently active
+                loadProductTransfers();
+            });
+        } catch (_) { /* table missing — ignore */ }
+    }
+
     /* ---------- initial load ---------- */
     (async function init() {
         applyRoleVisibility();
@@ -4462,6 +4786,9 @@
         if (r === 'admin' || r === 'branch_manager') await updateDraftsBadge();
         // Announcement badge shows for everyone EXCEPT Director
         if (r !== 'admin') await updateAnnouncementBadge();
+        // Product Transfers badge — load once at boot, then realtime keeps it fresh
+        try { await loadProductTransfers(); } catch (_) { /* table not migrated yet */ }
+        setupTransfersRealtime();
         setupRealtime();
         setupAnnouncementRealtime();
         setupProductRealtime();

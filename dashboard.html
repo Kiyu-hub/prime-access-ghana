@@ -1930,6 +1930,52 @@
             color: #991B1B;
         }
 
+        /* Transfers inbox tabs */
+        .pt-tabs {
+            display: flex;
+            gap: 4px;
+            margin-bottom: 14px;
+            border-bottom: 1px solid var(--c-line);
+        }
+        .pt-tab {
+            background: transparent;
+            border: 0;
+            padding: 10px 16px;
+            font: 500 0.88rem/1 inherit;
+            color: var(--c-ink-4);
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all var(--t-fast);
+        }
+        .pt-tab:hover { color: var(--c-ink-2); }
+        .pt-tab.is-active {
+            color: var(--c-accent-2);
+            border-bottom-color: var(--c-accent-2);
+            font-weight: 600;
+        }
+
+        /* Receive modal summary card */
+        .pt-receive-summary {
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 12px 14px;
+            font-size: 0.88rem;
+            color: var(--c-ink-3);
+        }
+        .pt-receive-summary__row {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 4px 0;
+        }
+        .pt-receive-summary__row > b { color: var(--c-ink-2); }
+
+        /* Transfer status pills */
+        .pill--pt-pending   { background: #FEF3C7; color: #92400E; border-color: #FDE68A; }
+        .pill--pt-received  { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
+        .pill--pt-cancelled { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
+
         /* ---------- DRAFTS bulk-action bar ---------- */
         .drafts-bulk-bar {
             display: flex;
@@ -2898,6 +2944,15 @@
                     <span>Messages</span>
                     <span class="nav-badge" id="navMsgBadge" hidden>0</span>
                 </a>
+                <a data-view="product-transfers">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 12h13"/>
+                        <path d="M12 5l7 7-7 7"/>
+                        <rect x="3" y="3" width="4" height="18" rx="1" opacity="0.4"/>
+                    </svg>
+                    <span>Product Transfers</span>
+                    <span class="nav-badge" id="navTransfersBadge" hidden>0</span>
+                </a>
                 <a class="staff-only" data-view="announcements">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 11l18-8v18L3 13z"/>
@@ -3295,6 +3350,51 @@
                         </div>
                         <h3>No warehouses yet</h3>
                         <p>Add at least one — every branch needs a default warehouse.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================== -->
+            <!--    PRODUCT TRANSFERS VIEW      -->
+            <!-- ============================== -->
+            <section class="view" id="view-product-transfers">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Product Transfers</h1>
+                        <p>Requests sent between branches. Mark received when the goods physically arrive.</p>
+                    </div>
+                </div>
+
+                <div class="pt-tabs" role="tablist">
+                    <button type="button" class="pt-tab is-active" data-pt-tab="incoming">Incoming</button>
+                    <button type="button" class="pt-tab" data-pt-tab="outgoing">Outgoing</button>
+                    <button type="button" class="pt-tab" data-pt-tab="all">All</button>
+                </div>
+
+                <div class="table-wrap">
+                    <div class="table-scroll">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Product</th>
+                                    <th>Qty</th>
+                                    <th>From → To</th>
+                                    <th>Payment</th>
+                                    <th>Status</th>
+                                    <th>Requested</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="productTransfersBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="empty" id="productTransfersEmpty" style="display:none;">
+                        <div class="empty__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h13"/><path d="M12 5l7 7-7 7"/></svg>
+                        </div>
+                        <h3>No transfers yet</h3>
+                        <p>When out of stock, open a product and tap <strong>Request from another branch</strong>.</p>
                     </div>
                 </div>
             </section>
@@ -4211,6 +4311,81 @@
                     <span>Request from another branch</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--    RECEIVE TRANSFER MODAL      -->
+    <!-- ============================== -->
+    <div class="modal" id="ptReceiveModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3 id="ptReceiveTitle">Mark transfer as received</h3>
+                    <p>Confirm what physically arrived. Stock is moved from source to destination atomically.</p>
+                </div>
+                <button class="modal__close" data-close="ptReceiveModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="ptReceiveForm">
+                <div class="modal__body">
+                    <input type="hidden" id="ptReceiveId" />
+                    <div class="field--full">
+                        <div id="ptReceiveSummary" class="pt-receive-summary"></div>
+                    </div>
+                    <div>
+                        <label for="ptReceiveQty">Quantity received<span class="req">*</span></label>
+                        <input type="number" id="ptReceiveQty" min="1" required />
+                        <small id="ptReceiveQtyHint" class="pt-staff-resolve"></small>
+                    </div>
+                    <div>
+                        <label for="ptReceiverCode">Your staff ID<span class="req">*</span></label>
+                        <input type="text" id="ptReceiverCode" placeholder="e.g. CH-A-001" autocomplete="off" required />
+                        <small id="ptReceiverName" class="pt-staff-resolve">Type your code to confirm your name</small>
+                    </div>
+                    <div class="field--full">
+                        <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;line-height:1.5;">
+                            <input type="checkbox" id="ptReceivePaymentConfirmed" style="width:18px;height:18px;accent-color:var(--c-success);margin-top:2px;flex-shrink:0;" />
+                            <span><strong>I confirm payment was received</strong> for this transfer (either by my branch or by the source branch).</span>
+                        </label>
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="ptReceiveModal">Cancel</button>
+                    <button type="submit" class="btn btn--success" id="ptReceiveSubmit">Confirm receipt</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--    CANCEL TRANSFER MODAL       -->
+    <!-- ============================== -->
+    <div class="modal modal--sm" id="ptCancelModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3>Cancel transfer</h3>
+                    <p>The request will be marked cancelled. No stock moves.</p>
+                </div>
+                <button class="modal__close" data-close="ptCancelModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="ptCancelForm">
+                <div class="modal__body">
+                    <input type="hidden" id="ptCancelId" />
+                    <div class="field--full">
+                        <label for="ptCancelReason">Reason<span class="req">*</span></label>
+                        <textarea id="ptCancelReason" rows="3" placeholder="e.g. Payment not received, item unavailable, requested in error" required></textarea>
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="ptCancelModal">Keep request</button>
+                    <button type="submit" class="btn" style="background:#fff;border:1.5px solid var(--c-danger);color:var(--c-danger);">Cancel transfer</button>
+                </footer>
+            </form>
         </div>
     </div>
 
