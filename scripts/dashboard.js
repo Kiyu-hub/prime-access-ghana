@@ -1155,11 +1155,20 @@
     };
 
     async function loadWarehouses() {
-        if (!session.is_admin) return;
+        const role = currentRole();
+        if (role !== 'admin' && role !== 'branch_manager') return;
         try {
-            warehousesCache = await window.CH.warehouses.listWithBranches();
+            const all = await window.CH.warehouses.listWithBranches();
+            // Branch Manager: scope to warehouses linked to their branch
+            if (role === 'branch_manager' && session.branch_id) {
+                warehousesCache = all.filter((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id));
+            } else {
+                warehousesCache = all;
+            }
             if (allBranchesCache.length === 0) allBranchesCache = await window.CH.branches.list();
             allBranchesCacheList = allBranchesCache;
+            // Toggle add button + row actions based on role
+            if (WAREHOUSE_ELS.addBtn) WAREHOUSE_ELS.addBtn.style.display = (role === 'admin') ? '' : 'none';
             renderWarehouses();
         } catch (err) {
             console.error(err);
@@ -1180,20 +1189,23 @@
         }
         WAREHOUSE_ELS.empty.style.display = 'none';
         const managerById = new Map(staffList.map((s) => [s.id, s.name]));
+        const isAdmin = currentRole() === 'admin';
         WAREHOUSE_ELS.body.innerHTML = warehousesCache.map((w) => {
             const linkedBranches = (w.branches || []).map((b) => `${escapeHtml(b.branch_name || '?')}${b.is_default ? ' <span class="pill" style="font-size:0.62rem;padding:1px 6px;">default</span>' : ''}`).join(', ') || '<span style="color:var(--c-ink-5);">— none —</span>';
+            // Only Director gets edit/delete actions; Branch Manager view-only.
+            const actionsHtml = isAdmin
+                ? `<div class="row-actions">
+                        <button class="icon-btn" data-edit-wh="${w.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                        <button class="icon-btn icon-btn--danger" data-del-wh="${w.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
+                    </div>`
+                : '<span style="color:var(--c-ink-5);font-size:0.78rem;">view only</span>';
             return `<tr>
                 <td><strong style="color:var(--c-ink-2);">${escapeHtml(w.name)}</strong></td>
                 <td><span class="itemno">${escapeHtml(w.code)}</span></td>
                 <td>${escapeHtml(w.location || '—')}</td>
                 <td>${escapeHtml(managerById.get(w.manager_staff_id) || '—')}</td>
                 <td>${linkedBranches}</td>
-                <td>
-                    <div class="row-actions">
-                        <button class="icon-btn" data-edit-wh="${w.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                        <button class="icon-btn icon-btn--danger" data-del-wh="${w.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
-                    </div>
-                </td>
+                <td>${actionsHtml}</td>
             </tr>`;
         }).join('');
     }
@@ -4296,7 +4308,9 @@
        Source of truth for allowed views per role: */
     const VIEWS_BY_ROLE = {
         admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts'],
-        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs'],
+        // Branch Manager: normal privileges + warehouse VIEW (read-only,
+        // scoped to their branch). No add/edit/delete — that stays admin.
+        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses'],
         warehouse_manager: ['products','messages','announcements'],
         staff:             ['products','showroom','reports','messages','announcements'],
     };

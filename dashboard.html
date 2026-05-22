@@ -270,10 +270,12 @@
         body.is-admin .nav .staff-only,
         body[data-role="admin"] .nav .staff-only { display: none !important; }
 
-        /* Branch Manager: gets Drafts + Activity Logs too (admin-only items
-           are still hidden, but these two are unlocked). */
+        /* Branch Manager: gets Drafts + Activity Logs + (read-only) Warehouses.
+           Add/Edit/Delete buttons inside the Warehouses view are hidden in
+           JS for non-admin viewers. */
         body[data-role="branch_manager"] .nav a[data-view="drafts"],
-        body[data-role="branch_manager"] .nav a[data-view="logs"] { display: flex !important; }
+        body[data-role="branch_manager"] .nav a[data-view="logs"],
+        body[data-role="branch_manager"] .nav a[data-view="warehouses"] { display: flex !important; }
         body[data-role="branch_manager"] .nav__label.admin-only { display: block !important; }
 
         /* Warehouse Manager: no Showroom (warehouse is their world). */
