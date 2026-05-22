@@ -301,41 +301,135 @@ export function showAppVersion(selector = '#sbVersion') {
 }
 
 /**
- * Manually triggers a service-worker update check. Clears the snooze so
- * any waiting update shows its dialog immediately. Bound to the version
- * badge so the user can tap it any time.
+ * Opens a "Version & refresh" dialog. From there the user can:
+ *   - Check for updates (runs reg.update; opens the update modal if new SW)
+ *   - Hard refresh (unregisters all SWs, clears caches, reloads from network)
+ *   - Close
+ * Bound to the version badge so the user can tap it any time.
  */
-export async function checkForUpdates(btnSelector = '#sbVersionBtn') {
-    const btn = btnSelector ? document.querySelector(btnSelector) : null;
-    const restore = btn && btn.querySelector('.sb-version__num') ? btn.querySelector('.sb-version__num').textContent : '';
-    try {
-        if (btn && btn.querySelector('.sb-version__num')) btn.querySelector('.sb-version__num').textContent = '…';
-        // Always clear snooze when user manually checks
-        localStorage.removeItem(UPDATE_SNOOZE_KEY);
-        if (!('serviceWorker' in navigator)) {
-            toast('Updates not supported by this browser.');
-            return;
-        }
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (!reg) {
-            toast('Reload the page to install the latest version.');
-            return;
-        }
-        await reg.update();
-        // If a waiting SW exists after update, show the dialog now
-        if (reg.waiting && navigator.serviceWorker.controller) {
-            showUpdateDialog(reg);
-        } else {
-            toast('You are on the latest version.');
-        }
-    } catch (e) {
-        console.warn('[CH] update check failed:', e);
-        toast('Could not check for updates.');
-    } finally {
-        if (btn && btn.querySelector('.sb-version__num') && restore) {
-            btn.querySelector('.sb-version__num').textContent = restore;
-        }
+export async function checkForUpdates(/* selector kept for compat */) {
+    showVersionDialog();
+}
+
+function showVersionDialog() {
+    if (document.getElementById('chVersionModal')) return;
+    const currentVersion = (typeof self !== 'undefined' && self.CH_APP_VERSION) || (typeof window !== 'undefined' && window.CH_APP_VERSION) || 'v—';
+
+    const overlay = document.createElement('div');
+    overlay.id = 'chVersionModal';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-modal', 'true');
+    overlay.style.cssText = `
+        position: fixed; inset: 0;
+        z-index: 9100;
+        display: flex; align-items: center; justify-content: center;
+        padding: 16px;
+        background: rgba(11, 31, 63, 0.55);
+        backdrop-filter: blur(8px) saturate(120%);
+        -webkit-backdrop-filter: blur(8px) saturate(120%);
+        opacity: 0;
+        transition: opacity 200ms ease;
+    `;
+    overlay.innerHTML = `
+        <div style="width:100%;max-width:440px;background:#fff;border-radius:18px;box-shadow:0 32px 80px rgba(2,6,23,0.45);overflow:hidden;font-family:inherit;transform:translateY(-8px) scale(0.97);transition:transform 240ms cubic-bezier(0.2,0,0,1), opacity 240ms ease;opacity:0;">
+            <div style="padding:24px 26px 18px;border-bottom:1px solid #E5E7EB;display:flex;align-items:flex-start;gap:14px;">
+                <div style="flex:0 0 44px;width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#0B1F3F,#0369A1);color:#fff;">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div style="flex:1;min-width:0;">
+                    <h3 style="margin:0;font-family:'Bodoni Moda',Georgia,serif;font-weight:600;font-size:1.25rem;color:#0F172A;letter-spacing:-0.01em;">App version</h3>
+                    <p style="margin:4px 0 0;font-size:0.86rem;color:#64748B;line-height:1.45;">You are running <code style="font-family:'JetBrains Mono',monospace;font-size:0.85rem;color:#0F172A;background:#F1F5F9;padding:2px 7px;border-radius:5px;">${currentVersion}</code></p>
+                </div>
+            </div>
+            <div style="padding:18px 26px;font-size:0.86rem;color:#475569;line-height:1.55;">
+                <p style="margin:0 0 10px;"><strong style="color:#0F172A;">Hard refresh</strong> clears every cached file, unregisters the service worker, and reloads the entire app with the latest code from the server.</p>
+                <p style="margin:0;">Use this if something looks wrong, a recent change isn't showing, or you want to be sure every page is on the newest version.</p>
+            </div>
+            <div style="padding:14px 22px 22px;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+                <button id="chVerClose" type="button" style="background:#fff;border:1.5px solid #E5E7EB;color:#475569;padding:10px 16px;border-radius:10px;font:500 0.86rem/1 inherit;cursor:pointer;">Close</button>
+                <button id="chVerCheck" type="button" style="background:#fff;border:1.5px solid #0EA5E9;color:#0369A1;padding:10px 16px;border-radius:10px;font:600 0.86rem/1 inherit;cursor:pointer;">Check for updates</button>
+                <button id="chVerHard" type="button" style="background:linear-gradient(135deg,#0B1F3F,#0369A1);color:#fff;border:0;padding:10px 18px;border-radius:10px;font:600 0.86rem/1 inherit;cursor:pointer;box-shadow:0 4px 12px rgba(3,105,161,0.35);">Hard refresh</button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+    const dialog = overlay.firstElementChild;
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        dialog.style.opacity = '1';
+        dialog.style.transform = 'translateY(0) scale(1)';
+    });
+
+    function close() {
+        overlay.style.opacity = '0';
+        setTimeout(() => overlay.remove(), 240);
     }
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    overlay.querySelector('#chVerClose').addEventListener('click', close);
+    document.addEventListener('keydown', function onKey(e) {
+        if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); close(); }
+    });
+
+    overlay.querySelector('#chVerCheck').addEventListener('click', async () => {
+        const btn = overlay.querySelector('#chVerCheck');
+        const orig = btn.textContent;
+        btn.disabled = true; btn.textContent = 'Checking…';
+        try {
+            localStorage.removeItem(UPDATE_SNOOZE_KEY);
+            if (!('serviceWorker' in navigator)) { btn.textContent = 'Not supported'; return; }
+            const reg = await navigator.serviceWorker.getRegistration();
+            if (!reg) { btn.textContent = 'Reload to install'; return; }
+            await reg.update();
+            if (reg.waiting && navigator.serviceWorker.controller) {
+                close();
+                showUpdateDialog(reg);
+            } else {
+                btn.textContent = 'You are up to date';
+                btn.style.background = '#DCFCE7';
+                btn.style.borderColor = '#86EFAC';
+                btn.style.color = '#166534';
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = orig;
+                    btn.style.background = '#fff';
+                    btn.style.borderColor = '#0EA5E9';
+                    btn.style.color = '#0369A1';
+                }, 1800);
+            }
+        } catch (e) {
+            console.warn('[CH] update check failed:', e);
+            btn.textContent = 'Check failed';
+            setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 1500);
+        }
+    });
+
+    overlay.querySelector('#chVerHard').addEventListener('click', async () => {
+        const btn = overlay.querySelector('#chVerHard');
+        btn.disabled = true; btn.textContent = 'Refreshing…';
+        try {
+            // Clear update flags so the next install/load is clean
+            localStorage.removeItem(UPDATE_SNOOZE_KEY);
+            localStorage.removeItem(SW_RESET_KEY);
+            // Unregister every service worker for this origin
+            if ('serviceWorker' in navigator) {
+                const regs = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(regs.map((r) => r.unregister()));
+            }
+            // Wipe every CH cache (and any other site-scoped cache)
+            if (window.caches && caches.keys) {
+                const keys = await caches.keys();
+                await Promise.all(keys.map((k) => caches.delete(k)));
+            }
+        } catch (e) {
+            console.warn('[CH] hard refresh prep failed:', e);
+        } finally {
+            // Force a full reload from network. Adding a unique query string
+            // also bypasses any HTTP-level cache the browser is holding.
+            const url = new URL(location.href);
+            url.searchParams.set('_hr', String(Date.now()));
+            location.replace(url.toString());
+        }
+    });
 }
 
 // Tiny toast for the version badge (avoids depending on dashboard.js's toast)
