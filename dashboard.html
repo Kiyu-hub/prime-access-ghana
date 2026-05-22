@@ -3366,6 +3366,7 @@
                                 <tr>
                                     <th>Name</th>
                                     <th>Location</th>
+                                    <th>Manager</th>
                                     <th>Staff</th>
                                     <th>Products</th>
                                     <th>Created</th>
@@ -3910,6 +3911,12 @@
                         <label for="branchLocation">Location <span class="hint">(optional)</span></label>
                         <input type="text" id="branchLocation" placeholder="e.g. Accra, Ghana" />
                     </div>
+                    <div class="field--full">
+                        <label for="branchManager">Branch manager <span class="hint">(optional — the same person can manage multiple branches)</span></label>
+                        <select id="branchManager">
+                            <option value="">— No manager assigned —</option>
+                        </select>
+                    </div>
                 </div>
                 <footer class="modal__foot">
                     <button type="button" class="btn" data-close="branchModal">Cancel</button>
@@ -4102,6 +4109,18 @@
                     </div>
                     <!-- Hidden compat for old form-submit code path -->
                     <input type="hidden" id="staffIsAdmin" />
+
+                    <div class="field--full" id="staffManagesAllField" style="display:none;">
+                        <label style="text-transform:none;letter-spacing:0;font-size:0.86rem;color:var(--c-ink-3);">Super-manager scope</label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;margin-top:6px;">
+                            <input type="checkbox" id="staffManagesAllBranches" style="width:18px;height:18px;accent-color:var(--c-accent);" />
+                            <span>Manages <strong>all branches</strong> (sees every branch's data)</span>
+                        </label>
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;margin-top:6px;">
+                            <input type="checkbox" id="staffManagesAllWarehouses" style="width:18px;height:18px;accent-color:var(--c-accent);" />
+                            <span>Manages <strong>all warehouses</strong> (sees every warehouse's data)</span>
+                        </label>
+                    </div>
                 </div>
                 <footer class="modal__foot">
                     <button type="button" class="btn" data-close="staffModal">Cancel</button>

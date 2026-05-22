@@ -80,20 +80,38 @@
             if (error) throw error;
             return data || [];
         },
-        async create(name, location = '') {
-            const { data, error } = await client.from('branches').insert({ name, location }).select().single();
+        async create(name, location = '', manager_staff_id = null) {
+            const { data, error } = await client.from('branches')
+                .insert({ name, location, manager_staff_id: manager_staff_id || null })
+                .select().single();
             if (error) throw error;
             return data;
         },
-        async rename(id, name, location) {
+        async update(id, patch) {
+            const { error } = await client.from('branches').update(patch).eq('id', id);
+            if (error) throw error;
+        },
+        // Backward-compat alias: existing UI may still call rename(id, name, location)
+        async rename(id, name, location, manager_staff_id) {
             const patch = { name };
             if (location !== undefined) patch.location = location;
+            if (manager_staff_id !== undefined) patch.manager_staff_id = manager_staff_id || null;
             const { error } = await client.from('branches').update(patch).eq('id', id);
             if (error) throw error;
         },
         async remove(id) {
             const { error } = await client.from('branches').delete().eq('id', id);
             if (error) throw error;
+        },
+        async managedBranchIds(staffId) {
+            const { data, error } = await client.rpc('staff_managed_branch_ids', { p_staff_id: staffId });
+            if (error) throw error;
+            return (data || []).map((r) => (typeof r === 'string' ? r : r.staff_managed_branch_ids || r));
+        },
+        async managedWarehouseIds(staffId) {
+            const { data, error } = await client.rpc('staff_managed_warehouse_ids', { p_staff_id: staffId });
+            if (error) throw error;
+            return (data || []).map((r) => (typeof r === 'string' ? r : r.staff_managed_warehouse_ids || r));
         },
     };
 
@@ -104,7 +122,7 @@
             if (error) throw error;
             return data || [];
         },
-        async create({ email, password, name, role, branch_id, is_admin }) {
+        async create({ email, password, name, role, branch_id, is_admin, manages_all_branches, manages_all_warehouses }) {
             const { data, error } = await client.rpc('create_staff', {
                 p_email: email,
                 p_password: password,
@@ -112,11 +130,13 @@
                 p_role: role,
                 p_branch_id: branch_id,
                 p_is_admin: !!is_admin,
+                p_manages_all_branches: !!manages_all_branches,
+                p_manages_all_warehouses: !!manages_all_warehouses,
             });
             if (error) throw error;
             return data;
         },
-        async update(id, { email, password, name, role, branch_id, is_admin }) {
+        async update(id, { email, password, name, role, branch_id, is_admin, manages_all_branches, manages_all_warehouses }) {
             const { error } = await client.rpc('update_staff', {
                 p_id: id,
                 p_email: email,
@@ -125,6 +145,8 @@
                 p_role: role,
                 p_branch_id: branch_id,
                 p_is_admin: !!is_admin,
+                p_manages_all_branches: !!manages_all_branches,
+                p_manages_all_warehouses: !!manages_all_warehouses,
             });
             if (error) throw error;
         },

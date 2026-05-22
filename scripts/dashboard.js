@@ -311,19 +311,25 @@
         try {
             // Invalidate caches used by global search + showroom
             globalSearchData = null;
-            // Visibility rules:
-            //   Director       -> all branches
-            //   Branch Manager -> their branch
-            //   Warehouse Mgr  -> their warehouse only (independent of branch)
-            //   Staff          -> their branch
+            // Visibility rules (now honours multi-branch / manages_all flags):
+            //   Director / manages_all_branches  -> every branch
+            //   Branch Manager                   -> branches where they're
+            //                                       manager_staff_id PLUS their
+            //                                       home branch_id
+            //   Warehouse Manager                -> warehouses where they're
+            //                                       manager_staff_id PLUS home
+            //   Staff                            -> their branch only
             // Drafts are included; they show with a "Pending approval" badge.
             const role = currentRole();
-            const branchFilter = (role === 'admin' || role === 'warehouse_manager') ? null : session.branch_id;
-            const all = await window.CH.products.list(branchFilter);
-            if (role === 'warehouse_manager' && session.warehouse_id) {
-                products = all.filter((p) => p.warehouse_id === session.warehouse_id);
-            } else {
+            const branchScope = getManagedBranchIds();   // 'ALL' or [ids]
+            const whScope     = getManagedWarehouseIds(); // 'ALL' or [ids]
+            const all = await window.CH.products.list(null); // fetch all, filter client-side
+            if (role === 'warehouse_manager') {
+                products = (whScope === 'ALL') ? all : all.filter((p) => whScope.includes(p.warehouse_id));
+            } else if (role === 'admin' || branchScope === 'ALL') {
                 products = all;
+            } else {
+                products = all.filter((p) => branchScope.includes(p.branch_id));
             }
             renderProducts();
         } catch (e) {
@@ -1159,9 +1165,15 @@
         if (role !== 'admin' && role !== 'branch_manager') return;
         try {
             const all = await window.CH.warehouses.listWithBranches();
-            // Branch Manager: scope to warehouses linked to their branch
-            if (role === 'branch_manager' && session.branch_id) {
-                warehousesCache = all.filter((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id));
+            // Branch Manager: scope to warehouses linked to any branch they manage
+            if (role === 'branch_manager') {
+                const scope = getManagedBranchIds();
+                if (scope === 'ALL') {
+                    warehousesCache = all;
+                } else {
+                    const allowed = new Set(scope);
+                    warehousesCache = all.filter((w) => (w.branches || []).some((b) => allowed.has(b.branch_id)));
+                }
             } else {
                 warehousesCache = all;
             }
@@ -1576,13 +1588,17 @@
         }
         els.branchesEmpty.style.display = 'none';
 
+        const staffById = new Map((staffList || []).map((s) => [s.id, s]));
         els.branchesBody.innerHTML = branches.map((b) => {
             const staffCount = staffList.filter((s) => s.branch_id === b.id).length;
             const productCount = '—'; // could query; left as placeholder for now
+            const mgr = b.manager_staff_id ? staffById.get(b.manager_staff_id) : null;
+            const mgrLabel = mgr ? `<strong>${escapeHtml(mgr.name)}</strong>${mgr.manages_all_branches ? ' <span class="pill pill--admin" style="font-size:0.6rem;">all branches</span>' : ''}` : '<span style="color:var(--c-ink-5);">—</span>';
             return `
                 <tr>
                     <td><strong style="color:var(--c-ink-2);">${escapeHtml(b.name)}</strong></td>
                     <td>${escapeHtml(b.location || '—')}</td>
+                    <td>${mgrLabel}</td>
                     <td>${staffCount}</td>
                     <td>${productCount}</td>
                     <td>${new Date(b.created_at).toLocaleDateString()}</td>
@@ -1601,6 +1617,15 @@
         }).join('');
     }
 
+    function populateBranchManagerSelect() {
+        const sel = document.getElementById('branchManager');
+        if (!sel) return;
+        const eligible = (staffList || []).filter((s) => s.role === 'branch_manager' || s.role === 'admin');
+        sel.innerHTML = ['<option value="">— No manager assigned —</option>']
+            .concat(eligible.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
+            .join('');
+    }
+
     els.branchesBody.addEventListener('click', (e) => {
         const editBtn = e.target.closest('[data-edit-branch]');
         if (editBtn) { openBranchEdit(editBtn.dataset.editBranch); return; }
@@ -1614,6 +1639,7 @@
         els.branchModalTitle.textContent = 'Add Branch';
         els.branchEditId.value = '';
         els.branchForm.reset();
+        populateBranchManagerSelect();
         els.branchModal.classList.add('is-open');
         setTimeout(() => els.branchName.focus(), 50);
     }
@@ -1625,6 +1651,9 @@
         els.branchEditId.value = id;
         els.branchName.value = b.name || '';
         els.branchLocation.value = b.location || '';
+        populateBranchManagerSelect();
+        const mgrSel = document.getElementById('branchManager');
+        if (mgrSel) mgrSel.value = b.manager_staff_id || '';
         els.branchModal.classList.add('is-open');
     }
 
@@ -1633,14 +1662,16 @@
         const id = els.branchEditId.value;
         const name = els.branchName.value.trim();
         const location = els.branchLocation.value.trim();
+        const mgrSel = document.getElementById('branchManager');
+        const manager_staff_id = (mgrSel && mgrSel.value) || null;
         if (!name) { toast('Branch name is required.', 'error'); return; }
         try {
             if (id) {
-                await window.CH.branches.rename(id, name, location);
+                await window.CH.branches.rename(id, name, location, manager_staff_id);
                 window.CH.logs.record({ action: 'branch_updated', branch_id: id, branch_name: name, staff_id: session.id, staff_name: session.name, note: location ? 'location: ' + location : null });
                 toast('Branch updated.', 'success');
             } else {
-                const created = await window.CH.branches.create(name, location);
+                const created = await window.CH.branches.create(name, location, manager_staff_id);
                 window.CH.logs.record({ action: 'branch_created', branch_id: created && created.id, branch_name: name, staff_id: session.id, staff_name: session.name, note: location ? 'location: ' + location : null });
                 toast('Branch added.', 'success');
             }
@@ -1759,6 +1790,16 @@
         wrap.style.display = (els.staffRole.value === 'warehouse_manager') ? '' : 'none';
     }
 
+    // "Manages all branches / warehouses" only makes sense for branch_manager,
+    // warehouse_manager, and Director. Plain staff don't manage anything.
+    function toggleStaffManagesAllField() {
+        const wrap = document.getElementById('staffManagesAllField');
+        if (!wrap) return;
+        const role = els.staffRole.value;
+        const show = (role === 'branch_manager' || role === 'warehouse_manager' || role === 'admin');
+        wrap.style.display = show ? '' : 'none';
+    }
+
     function openStaffAdd() {
         els.staffModalTitle.textContent = 'Add Staff';
         els.staffEditId.value = '';
@@ -1770,6 +1811,12 @@
         populateStaffWarehouseSelect();
         els.staffRole.value = 'staff';
         toggleStaffWarehouseField();
+        toggleStaffManagesAllField();
+        // Clear the manages-all toggles for a new staff
+        const a1 = document.getElementById('staffManagesAllBranches');
+        const a2 = document.getElementById('staffManagesAllWarehouses');
+        if (a1) a1.checked = false;
+        if (a2) a2.checked = false;
         const codeField = $('#staffCodeDisplay');
         if (codeField) codeField.value = '(generated on save)';
         els.staffModal.classList.add('is-open');
@@ -1794,15 +1841,23 @@
         const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
         els.staffRole.value = enumRole;
         toggleStaffWarehouseField();
+        toggleStaffManagesAllField();
         const whSel = $('#staffWarehouse');
         if (whSel) whSel.value = s.warehouse_id || '';
         els.staffIsAdmin.value = s.is_admin ? '1' : '';
+        const a1 = document.getElementById('staffManagesAllBranches');
+        const a2 = document.getElementById('staffManagesAllWarehouses');
+        if (a1) a1.checked = !!s.manages_all_branches;
+        if (a2) a2.checked = !!s.manages_all_warehouses;
         const codeField = $('#staffCodeDisplay');
         if (codeField) codeField.value = s.staff_code || '(not yet generated)';
         els.staffModal.classList.add('is-open');
     }
 
-    if (els.staffRole) els.staffRole.addEventListener('change', toggleStaffWarehouseField);
+    if (els.staffRole) els.staffRole.addEventListener('change', () => {
+        toggleStaffWarehouseField();
+        toggleStaffManagesAllField();
+    });
 
     els.staffForm.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1810,6 +1865,8 @@
         const role = els.staffRole.value || 'staff';
         const warehouseSel = $('#staffWarehouse');
         const warehouseId = (role === 'warehouse_manager' && warehouseSel) ? (warehouseSel.value || null) : null;
+        const allBranchesEl = document.getElementById('staffManagesAllBranches');
+        const allWarehousesEl = document.getElementById('staffManagesAllWarehouses');
         const payload = {
             name: els.staffName.value.trim(),
             email: els.staffEmail.value.trim().toLowerCase(),
@@ -1817,6 +1874,8 @@
             role,
             branch_id: els.staffBranch.value || null,
             is_admin: role === 'admin',
+            manages_all_branches:   !!(allBranchesEl   && allBranchesEl.checked),
+            manages_all_warehouses: !!(allWarehousesEl && allWarehousesEl.checked),
         };
         if (!payload.name || !payload.email) { toast('Name and email are required.', 'error'); return; }
         if (role === 'warehouse_manager' && !warehouseId) { toast('Warehouse Manager must be assigned to a warehouse.', 'error'); return; }
@@ -3793,10 +3852,20 @@
 
     async function loadDrafts() {
         try {
-            // Director sees all drafts; Branch Manager only sees their branch.
+            // Director or super-manager sees all drafts; Branch Manager
+            // sees drafts for every branch they manage.
             const role = currentRole();
-            const filter = role === 'admin' ? undefined : session.branch_id;
-            const drafts = await window.CH.drafts.list(filter);
+            const scope = getManagedBranchIds();
+            let drafts;
+            if (role === 'admin' || scope === 'ALL') {
+                drafts = await window.CH.drafts.list();
+            } else if (scope.length === 1) {
+                drafts = await window.CH.drafts.list(scope[0]);
+            } else {
+                // Fetch all then filter client-side (we don't have an IN-list endpoint)
+                drafts = await window.CH.drafts.list();
+                drafts = drafts.filter((d) => scope.includes(d.branch_id));
+            }
             allDraftsCache = drafts;
             // Drop any stale selections (drafts that no longer exist)
             const validIds = new Set(drafts.map((d) => d.id));
@@ -4094,13 +4163,15 @@
     async function loadLogs() {
         try {
             const all = await window.CH.logs.list(500);
-            // Branch Manager sees only logs scoped to their branch.
-            // Director sees everything.
+            // Branch Manager sees logs across every branch they manage.
+            // Director or super-manager: all logs.
             const role = currentRole();
-            if (role === 'branch_manager' && session.branch_id) {
-                allLogsCache = all.filter((l) => l.branch_id === session.branch_id);
-            } else {
+            const scope = getManagedBranchIds();
+            if (role === 'admin' || scope === 'ALL') {
                 allLogsCache = all;
+            } else {
+                const allowed = new Set(scope);
+                allLogsCache = all.filter((l) => !l.branch_id || allowed.has(l.branch_id));
             }
             renderLogs();
         } catch (err) {
@@ -4321,6 +4392,34 @@
         const r = session.role;
         if (['staff','branch_manager','warehouse_manager','admin'].includes(r)) return r;
         return 'staff';
+    }
+
+    // Returns the set of branch_ids a session covers, OR the sentinel 'ALL'.
+    // Used by every role-scoped loader. Considers:
+    //   - admin / manages_all_branches  -> 'ALL'
+    //   - else: session.branch_id (home) + every branch where the user is
+    //     listed as manager_staff_id (cached from `branches`).
+    function getManagedBranchIds() {
+        if (!session) return [];
+        if (session.is_admin || session.manages_all_branches) return 'ALL';
+        const home = session.branch_id;
+        const cache = (typeof branches !== 'undefined' && Array.isArray(branches)) ? branches : [];
+        const managed = cache.filter((b) => b.manager_staff_id === session.id).map((b) => b.id);
+        const out = new Set(managed);
+        if (home) out.add(home);
+        return Array.from(out);
+    }
+
+    // Returns the set of warehouse_ids a session covers, OR 'ALL'.
+    function getManagedWarehouseIds() {
+        if (!session) return [];
+        if (session.is_admin || session.manages_all_warehouses) return 'ALL';
+        const home = session.warehouse_id;
+        const cache = (typeof warehousesCache !== 'undefined' && Array.isArray(warehousesCache)) ? warehousesCache : [];
+        const managed = cache.filter((w) => w.manager_staff_id === session.id).map((w) => w.id);
+        const out = new Set(managed);
+        if (home) out.add(home);
+        return Array.from(out);
     }
 
     function viewAllowedForRole(view, role) {
