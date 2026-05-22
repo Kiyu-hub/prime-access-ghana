@@ -629,10 +629,13 @@
                 note: isPublishingDraft ? 'published from draft' : null,
             });
             delete els.modal.dataset.draftSource;
-            toast(editId ? 'Product updated.' : 'Product added.', 'success');
+            toast(isPublishingDraft ? 'Draft published.' : (editId ? 'Product updated.' : 'Product added.'), 'success');
             closeProductModal();
             await loadProducts();
             await updateDraftsBadge();
+            // If the user is on the Drafts admin page, refresh it too so
+            // edits land visually (was stale: only Products got refreshed).
+            if (currentView === 'drafts') await loadDrafts();
         } catch (err) {
             console.error(err);
             const msg = (err && err.message) || '';
