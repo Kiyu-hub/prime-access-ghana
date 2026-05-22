@@ -1424,6 +1424,7 @@
         PA_ELS.global.checked = false;
         renderPaymentAccountBranchLinks(null);
         togglePaBranchLinksVisibility();
+        togglePaCashMode();
         PA_ELS.modal.classList.add('is-open');
         setTimeout(() => PA_ELS.method.focus(), 40);
     }
@@ -1441,11 +1442,31 @@
         PA_ELS.global.checked = !!a.is_global;
         renderPaymentAccountBranchLinks(id);
         togglePaBranchLinksVisibility();
+        togglePaCashMode();
         PA_ELS.modal.classList.add('is-open');
     }
 
     if (PA_ELS.addBtn) PA_ELS.addBtn.addEventListener('click', openPaymentAccountAdd);
     if (PA_ELS.global) PA_ELS.global.addEventListener('change', togglePaBranchLinksVisibility);
+
+    // Cash mode: hide provider/account-name/account-number fields entirely.
+    // Cash doesn't have any of those — it's just a tag at a branch.
+    function togglePaCashMode() {
+        const m = PA_ELS.method && PA_ELS.method.value;
+        const isCash = m === 'cash';
+        const providerWrap = PA_ELS.provider && PA_ELS.provider.closest('div');
+        const nameWrap     = PA_ELS.name     && PA_ELS.name.closest('div');
+        const numberWrap   = PA_ELS.number   && PA_ELS.number.closest('div');
+        if (providerWrap) providerWrap.style.display = isCash ? 'none' : '';
+        if (nameWrap)     nameWrap.style.display     = isCash ? 'none' : '';
+        if (numberWrap)   numberWrap.style.display   = isCash ? 'none' : '';
+        // When switching INTO cash, drop the required attribute so the
+        // browser doesn't block form submit on invisible fields.
+        if (PA_ELS.provider) PA_ELS.provider.required = !isCash;
+        if (PA_ELS.name)     PA_ELS.name.required     = !isCash;
+        if (PA_ELS.number)   PA_ELS.number.required   = !isCash;
+    }
+    if (PA_ELS.method) PA_ELS.method.addEventListener('change', togglePaCashMode);
     if (PA_ELS.body) PA_ELS.body.addEventListener('click', (e) => {
         const editBtn = e.target.closest('[data-edit-pa]');
         if (editBtn) { openPaymentAccountEdit(editBtn.dataset.editPa); return; }
@@ -1457,13 +1478,20 @@
         e.preventDefault();
         const id = PA_ELS.editId.value;
         const method = PA_ELS.method.value;
-        const provider = PA_ELS.provider.value.trim();
-        const account_name = PA_ELS.name.value.trim();
-        const account_number = PA_ELS.number.value.trim();
+        let provider = PA_ELS.provider.value.trim();
+        let account_name = PA_ELS.name.value.trim();
+        let account_number = PA_ELS.number.value.trim();
         const notes = PA_ELS.notes.value.trim();
         const is_global = !!PA_ELS.global.checked;
-        if (!method || !provider || !account_name || !account_number) {
-            toast('Method, provider, name and number are all required.', 'error');
+        if (!method) { toast('Pick a method.', 'error'); return; }
+        // Cash doesn't have provider/name/number — auto-fill placeholders
+        // so the NOT NULL columns are satisfied without bothering the Director.
+        if (method === 'cash') {
+            provider = 'Cash';
+            account_name = 'Cash collection';
+            account_number = '—';
+        } else if (!provider || !account_name || !account_number) {
+            toast('Provider, name and number are required for ' + method + '.', 'error');
             return;
         }
         const branch_ids = is_global ? [] : Array.from(PA_ELS.branchLinks.querySelectorAll('input[data-pa-branch]:checked')).map((cb) => cb.dataset.paBranch);
@@ -2538,21 +2566,39 @@
     async function loadReports() {
         try {
             const { branches: br, products: prods, staff: stf } = await window.CH.reports.overview();
+            const role = currentRole();
 
-            // Filter to user's branch if non-admin — for products, branches AND staff
-            const visibleProducts = session.is_admin
-                ? prods
-                : prods.filter((p) => p.branch_id === session.branch_id);
-            const visibleBranches = session.is_admin
-                ? br
-                : br.filter((b) => b.id === session.branch_id);
-            const visibleStaff = session.is_admin
-                ? stf
-                : stf.filter((s) => s.branch_id === session.branch_id);
+            // Role-scoped visibility:
+            //   admin             -> everything
+            //   branch_manager    -> their branch
+            //   warehouse_manager -> their warehouse (independent of branch)
+            //   staff             -> their branch (read-only summary)
+            let visibleProducts, visibleBranches, visibleStaff, scopeLabel;
+            if (role === 'admin') {
+                visibleProducts = prods;
+                visibleBranches = br;
+                visibleStaff = stf;
+                scopeLabel = `${br.length} branch${br.length === 1 ? '' : 'es'} · ${stf.length} staff company-wide`;
+            } else if (role === 'warehouse_manager' && session.warehouse_id) {
+                visibleProducts = prods.filter((p) => p.warehouse_id === session.warehouse_id);
+                visibleBranches = br.filter((b) => b.id === session.branch_id);
+                visibleStaff = stf.filter((s) => s.warehouse_id === session.warehouse_id);
+                scopeLabel = `${session.warehouse_name || 'Your warehouse'} · warehouse view`;
+            } else {
+                // branch_manager + staff
+                visibleProducts = prods.filter((p) => p.branch_id === session.branch_id);
+                visibleBranches = br.filter((b) => b.id === session.branch_id);
+                visibleStaff = stf.filter((s) => s.branch_id === session.branch_id);
+                scopeLabel = `${session.branch_name || 'Your branch'} · ${visibleStaff.length} staff at your branch`;
+            }
 
-            els.reportsHeading.textContent = session.is_admin
-                ? `${visibleBranches.length} branch${visibleBranches.length === 1 ? '' : 'es'} · ${stf.length} staff company-wide`
-                : `${session.branch_name} · ${visibleStaff.length} staff at your branch`;
+            els.reportsHeading.textContent = scopeLabel;
+
+            // Fire-and-forget extras (don't block the main render if any
+            // missing tables — Phase 2 SQL may not be applied yet)
+            renderReportTransfersSection(role, visibleBranches);
+            renderReportDraftsSection(role, visibleProducts);
+            renderReportPaymentAccountsSection(role);
 
             // Top cards
             const totalProducts = visibleProducts.length;
@@ -2645,6 +2691,81 @@
                 <div class="report-card__hint">${hint}</div>
             </div>`;
         }
+    }
+
+    /* ---- Report sections that are added by Phase 2 -------------- */
+    async function renderReportTransfersSection(role, visibleBranches) {
+        const host = document.getElementById('reportTransfers');
+        if (!host) return; // section not present in HTML — skip silently
+        if (!window.CH || !window.CH.productTransfers) {
+            host.innerHTML = '';
+            return;
+        }
+        let filters = {};
+        if (role === 'branch_manager' || role === 'staff') {
+            filters.toBranchId = session.branch_id;
+        } else if (role === 'warehouse_manager') {
+            filters.fromWarehouseId = session.warehouse_id;
+        }
+        try {
+            const list = await window.CH.productTransfers.list({ ...filters, limit: 200 });
+            const pending = list.filter((t) => t.status === 'pending').length;
+            const received = list.filter((t) => t.status === 'received').length;
+            const cancelled = list.filter((t) => t.status === 'cancelled').length;
+            host.innerHTML = `
+                <h2>Product transfers</h2>
+                <div class="report-grid">
+                    <div class="report-card"><div class="report-card__label">Total</div><div class="report-card__value">${list.length}</div></div>
+                    <div class="report-card ${pending > 0 ? 'report-card--alert' : ''}"><div class="report-card__label">Pending</div><div class="report-card__value">${pending}</div></div>
+                    <div class="report-card"><div class="report-card__label">Received</div><div class="report-card__value">${received}</div></div>
+                    <div class="report-card"><div class="report-card__label">Cancelled</div><div class="report-card__value">${cancelled}</div></div>
+                </div>
+            `;
+        } catch (_) {
+            host.innerHTML = '<h2>Product transfers</h2><div class="report-card"><div class="report-card__label">Transfers not enabled yet</div><div class="report-card__hint">Run the latest setup to enable.</div></div>';
+        }
+    }
+
+    async function renderReportDraftsSection(role, visibleProducts) {
+        const host = document.getElementById('reportDrafts');
+        if (!host) return;
+        // Drafts are visible to admin + branch_manager only
+        if (role !== 'admin' && role !== 'branch_manager') { host.innerHTML = ''; return; }
+        try {
+            const drafts = await window.CH.drafts.list(role === 'admin' ? null : session.branch_id);
+            const ready = drafts.filter((d) => d.item_no && d.description && d.price && d.stock != null).length;
+            const needing = drafts.length - ready;
+            host.innerHTML = `
+                <h2>Drafts</h2>
+                <div class="report-grid">
+                    <div class="report-card"><div class="report-card__label">Total drafts</div><div class="report-card__value">${drafts.length}</div></div>
+                    <div class="report-card"><div class="report-card__label">Ready to publish</div><div class="report-card__value">${ready}</div></div>
+                    <div class="report-card ${needing > 0 ? 'report-card--alert' : ''}"><div class="report-card__label">Needs attention</div><div class="report-card__value">${needing}</div></div>
+                </div>
+            `;
+        } catch (_) { host.innerHTML = ''; }
+    }
+
+    async function renderReportPaymentAccountsSection(role) {
+        const host = document.getElementById('reportPaymentAccounts');
+        if (!host) return;
+        if (role !== 'admin') { host.innerHTML = ''; return; }
+        if (!window.CH || !window.CH.paymentAccounts) { host.innerHTML = ''; return; }
+        try {
+            const all = await window.CH.paymentAccounts.list();
+            const byMethod = { cash: 0, momo: 0, pos: 0, bank: 0 };
+            all.forEach((a) => { if (byMethod[a.method] !== undefined) byMethod[a.method]++; });
+            host.innerHTML = `
+                <h2>Payment accounts</h2>
+                <div class="report-grid">
+                    <div class="report-card"><div class="report-card__label">Total accounts</div><div class="report-card__value">${all.length}</div></div>
+                    <div class="report-card"><div class="report-card__label">MoMo</div><div class="report-card__value">${byMethod.momo}</div></div>
+                    <div class="report-card"><div class="report-card__label">Bank</div><div class="report-card__value">${byMethod.bank}</div></div>
+                    <div class="report-card"><div class="report-card__label">POS</div><div class="report-card__value">${byMethod.pos}</div></div>
+                    <div class="report-card"><div class="report-card__label">Cash</div><div class="report-card__value">${byMethod.cash}</div></div>
+                </div>
+            `;
+        } catch (_) { host.innerHTML = ''; }
     }
 
     els.reportsRefreshBtn.addEventListener('click', loadReports);
