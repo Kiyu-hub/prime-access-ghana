@@ -226,6 +226,8 @@
     let currentView = 'products';
     let categoriesCache = [];    // [{ id, name, sort_order }]
     let materialsCache = [];     // same shape
+    let allDraftsCache = [];     // current drafts shown in the table
+    let selectedDraftIds = new Set(); // ids of drafts ticked in the table
 
     /* ---------- user header ---------- */
     els.userName.textContent = session.name || 'Staff';
@@ -296,10 +298,12 @@
         try {
             // Invalidate caches used by global search + showroom
             globalSearchData = null;
-            // Admin sees ALL products; non-admin sees only their branch
+            // Admin sees ALL products; non-admin sees only their branch.
+            // Drafts ARE included now — they show with a "Pending approval"
+            // badge until an admin opens, edits, and saves them.
             const branchFilter = session.is_admin ? null : session.branch_id;
             const all = await window.CH.products.list(branchFilter);
-            products = all.filter((p) => !p.is_draft); // drafts hidden from Products view
+            products = all;
             renderProducts();
         } catch (e) {
             console.error(e);
@@ -365,10 +369,13 @@
             ? `<img src="${escapeAttr(p.image_url)}" alt="" class="thumb" loading="lazy" />`
             : `<div class="thumb thumb--ph"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg></div>`;
 
+        const draftBadge = p.is_draft
+            ? '<span class="pill pill--pending" title="Awaiting Director review">Pending approval</span>'
+            : '';
         return `
-            <tr>
+            <tr${p.is_draft ? ' class="row--draft"' : ''}>
                 <td>${thumb}</td>
-                <td><span class="itemno">${p.item_no ? escapeHtml(p.item_no) : '<span style="color:var(--c-ink-5);">—</span>'}</span></td>
+                <td><span class="itemno">${p.item_no ? escapeHtml(p.item_no) : '<span style="color:var(--c-ink-5);">—</span>'}</span> ${draftBadge}</td>
                 <td style="max-width:280px;">${escapeHtml(p.description || '')}</td>
                 <td>${p.category ? '<span class="pill">' + escapeHtml(p.category) + '</span>' : '—'}</td>
                 <td>${escapeHtml(p.material || '—')}</td>
@@ -600,21 +607,23 @@
 
         try {
             els.saveBtn.disabled = true;
-            // If editing a draft, KEEP it as draft (manual publish only).
-            // The user clicks the explicit "Publish" action on the drafts list to make it live.
-            if (els.modal.dataset.draftSource === editId) {
-                data.is_draft = true;
+            // If admin/editor is finalising a draft, save with is_draft=false
+            // (admin edit + save = approval/publishing). Drafts created via
+            // OCR/import stay as drafts until someone reviews them here.
+            const isPublishingDraft = !!els.modal.dataset.draftSource;
+            if (isPublishingDraft) {
+                data.is_draft = false;
             }
             const result = await window.CH.products.upsert(data);
             await window.CH.logs.record({
                 product_id: (result && result.id) || data.id,
                 item_no: data.item_no,
-                action: editId ? 'updated' : 'created',
+                action: isPublishingDraft ? 'created' : (editId ? 'updated' : 'created'),
                 branch_id: data.branch_id,
                 branch_name: (allBranchesCache.find((b) => b.id === data.branch_id) || {}).name,
                 staff_id: session.id,
                 staff_name: session.name,
-                note: els.modal.dataset.draftSource ? 'published from draft' : null,
+                note: isPublishingDraft ? 'published from draft' : null,
             });
             delete els.modal.dataset.draftSource;
             toast(editId ? 'Product updated.' : 'Product added.', 'success');
@@ -1465,11 +1474,15 @@
             const branchName = branchById.get(p.branch_id) || '—';
             const showBranchTag = session.is_admin;
 
-            return `<article class="prod-card" data-product-id="${p.id}">
+            const draftTag = p.is_draft
+                ? '<span class="pill pill--pending prod-card__pending" title="Awaiting Director review">Pending approval</span>'
+                : '';
+            return `<article class="prod-card${p.is_draft ? ' prod-card--draft' : ''}" data-product-id="${p.id}">
                 <div class="prod-card__media">
                     ${media}
                     <span class="pill ${stockClass} prod-card__stock">${stockLabel}</span>
                     ${showBranchTag ? `<span class="branch-tag prod-card__branch-tag">${escapeHtml(branchName)}</span>` : ''}
+                    ${draftTag}
                 </div>
                 <div class="prod-card__body">
                     <div class="prod-card__itemno">${escapeHtml(p.item_no || '')}</div>
@@ -2781,12 +2794,19 @@
     async function loadDrafts() {
         try {
             const drafts = await window.CH.drafts.list();
+            allDraftsCache = drafts;
+            // Drop any stale selections (drafts that no longer exist)
+            const validIds = new Set(drafts.map((d) => d.id));
+            for (const id of [...selectedDraftIds]) {
+                if (!validIds.has(id)) selectedDraftIds.delete(id);
+            }
             if (allBranchesCache.length === 0) allBranchesCache = await window.CH.branches.list();
             const branchById = new Map(allBranchesCache.map((b) => [b.id, b.name]));
 
             if (drafts.length === 0) {
                 els.draftsBody.innerHTML = '';
                 els.draftsEmpty.style.display = 'block';
+                refreshDraftsBulkBar();
                 return;
             }
             els.draftsEmpty.style.display = 'none';
@@ -2798,7 +2818,9 @@
                 if (!d.price)       missing.push('price');
                 if (d.stock == null) missing.push('stock');
                 const needsAttention = missing.length > 0;
+                const checked = selectedDraftIds.has(d.id) ? 'checked' : '';
                 return `<tr>
+                    <td style="padding-right:0;"><input type="checkbox" class="drafts-cb" data-draft-cb="${d.id}" ${checked} aria-label="Select draft" /></td>
                     <td>${d.item_no ? '<span class="itemno">' + escapeHtml(d.item_no) + '</span>' : '<span style="color:var(--c-ink-5);font-style:italic;">— no code —</span>'}</td>
                     <td>${escapeHtml(d.description || '— no description —')}</td>
                     <td>${escapeHtml(branchById.get(d.branch_id) || '—')}</td>
@@ -2821,6 +2843,7 @@
                     </td>
                 </tr>`;
             }).join('');
+            refreshDraftsBulkBar();
         } catch (err) {
             console.error(err);
             if (isMissingTableError(err)) {
@@ -2830,6 +2853,141 @@
             }
         }
     }
+
+    function refreshDraftsBulkBar() {
+        const bar = document.getElementById('draftsBulkBar');
+        const countEl = document.getElementById('draftsBulkCount');
+        const selectAll = document.getElementById('draftsSelectAll');
+        if (!bar) return;
+        const n = selectedDraftIds.size;
+        if (countEl) countEl.textContent = String(n);
+        bar.hidden = n === 0;
+        if (selectAll) {
+            const total = allDraftsCache.length;
+            selectAll.checked = total > 0 && n === total;
+            selectAll.indeterminate = n > 0 && n < total;
+        }
+    }
+
+    // Row-level checkbox toggles a single draft in/out of selection
+    els.draftsBody.addEventListener('change', (e) => {
+        const cb = e.target.closest('[data-draft-cb]');
+        if (!cb) return;
+        const id = cb.dataset.draftCb;
+        if (cb.checked) selectedDraftIds.add(id); else selectedDraftIds.delete(id);
+        refreshDraftsBulkBar();
+    });
+
+    // Header "select all" toggles every visible draft
+    const draftsSelectAllEl = document.getElementById('draftsSelectAll');
+    if (draftsSelectAllEl) draftsSelectAllEl.addEventListener('change', () => {
+        if (draftsSelectAllEl.checked) {
+            allDraftsCache.forEach((d) => selectedDraftIds.add(d.id));
+        } else {
+            selectedDraftIds.clear();
+        }
+        // Reflect on every row's checkbox
+        $$('#draftsBody [data-draft-cb]').forEach((el) => {
+            el.checked = selectedDraftIds.has(el.dataset.draftCb);
+        });
+        refreshDraftsBulkBar();
+    });
+
+    // Clear button
+    const draftsBulkClearBtn = document.getElementById('draftsBulkClearBtn');
+    if (draftsBulkClearBtn) draftsBulkClearBtn.addEventListener('click', () => {
+        selectedDraftIds.clear();
+        $$('#draftsBody [data-draft-cb]').forEach((el) => { el.checked = false; });
+        refreshDraftsBulkBar();
+    });
+
+    // Bulk delete
+    const draftsBulkDeleteBtn = document.getElementById('draftsBulkDeleteBtn');
+    if (draftsBulkDeleteBtn) draftsBulkDeleteBtn.addEventListener('click', async () => {
+        if (selectedDraftIds.size === 0) return;
+        const ids = [...selectedDraftIds];
+        const word = ids.length === 1 ? 'draft' : 'drafts';
+        if (!confirm('Discard ' + ids.length + ' ' + word + '? This cannot be undone.')) return;
+        try {
+            draftsBulkDeleteBtn.disabled = true;
+            // Run deletes in parallel, but log each one
+            const idToDraft = new Map(allDraftsCache.map((d) => [d.id, d]));
+            const results = await Promise.allSettled(ids.map(async (id) => {
+                const d = idToDraft.get(id) || {};
+                await window.CH.products.remove(id);
+                try {
+                    await window.CH.logs.record({
+                        product_id: id,
+                        item_no: d.item_no || null,
+                        action: 'deleted',
+                        branch_id: d.branch_id || null,
+                        staff_id: session.id,
+                        staff_name: session.name,
+                        note: 'draft discarded (bulk)',
+                    });
+                } catch (_) {}
+            }));
+            const ok = results.filter((r) => r.status === 'fulfilled').length;
+            const fail = results.length - ok;
+            selectedDraftIds.clear();
+            await loadDrafts();
+            await updateDraftsBadge();
+            if (fail > 0) toast('Deleted ' + ok + ', ' + fail + ' failed.', 'error');
+            else toast('Discarded ' + ok + ' ' + (ok === 1 ? 'draft' : 'drafts') + '.', 'success');
+        } catch (err) {
+            toast('Bulk delete failed: ' + (err.message || 'unknown'), 'error');
+        } finally {
+            draftsBulkDeleteBtn.disabled = false;
+        }
+    });
+
+    // Bulk publish — only drafts with no missing fields are publishable
+    const draftsBulkPublishBtn = document.getElementById('draftsBulkPublishBtn');
+    if (draftsBulkPublishBtn) draftsBulkPublishBtn.addEventListener('click', async () => {
+        if (selectedDraftIds.size === 0) return;
+        const idToDraft = new Map(allDraftsCache.map((d) => [d.id, d]));
+        const selectedDrafts = [...selectedDraftIds].map((id) => idToDraft.get(id)).filter(Boolean);
+        const ready = selectedDrafts.filter((d) => d.item_no && d.description && d.price && d.stock != null);
+        const skip = selectedDrafts.length - ready.length;
+        if (ready.length === 0) {
+            toast('Selected drafts have missing fields. Edit them first.', 'error');
+            return;
+        }
+        const msg = skip > 0
+            ? 'Publish ' + ready.length + ' draft' + (ready.length === 1 ? '' : 's') + '? ' + skip + ' will be skipped (missing fields).'
+            : 'Publish ' + ready.length + ' draft' + (ready.length === 1 ? '' : 's') + ' to Products?';
+        if (!confirm(msg)) return;
+        try {
+            draftsBulkPublishBtn.disabled = true;
+            const results = await Promise.allSettled(ready.map(async (d) => {
+                await window.CH.products.upsert({ id: d.id, is_draft: false });
+                try {
+                    await window.CH.logs.record({
+                        product_id: d.id,
+                        item_no: d.item_no || null,
+                        action: 'created',
+                        branch_id: d.branch_id || null,
+                        staff_id: session.id,
+                        staff_name: session.name,
+                        note: 'published from draft (bulk)',
+                    });
+                } catch (_) {}
+            }));
+            const ok = results.filter((r) => r.status === 'fulfilled').length;
+            const fail = results.length - ok;
+            selectedDraftIds.clear();
+            await loadDrafts();
+            await updateDraftsBadge();
+            const parts = ['Published ' + ok];
+            if (skip > 0) parts.push(skip + ' skipped');
+            if (fail > 0) parts.push(fail + ' failed');
+            toast(parts.join(' · ') + '.', fail > 0 ? 'error' : 'success');
+        } catch (err) {
+            toast('Bulk publish failed: ' + (err.message || 'unknown'), 'error');
+        } finally {
+            draftsBulkPublishBtn.disabled = false;
+        }
+    });
 
     els.draftsBody.addEventListener('click', async (e) => {
         const editBtn = e.target.closest('[data-draft-edit]');
