@@ -1924,24 +1924,22 @@
         if (p.created_at) rows.push(['Added', new Date(p.created_at).toLocaleDateString()]);
         els.pdetailRows.innerHTML = rows.map(([k, v]) => `<div class="pdetail__row"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>`).join('');
 
-        // "Request from another branch" — show only when:
-        //   - viewer can request (staff/branch_manager/admin, NOT warehouse_manager)
-        //   - this product row's stock is 0
-        //   - AND at least one other warehouse has stock > 0 for the same item_no
+        // "Request from another branch" — strict gate:
+        //   - viewer can request (NOT warehouse_manager)
+        //   - product has a real item_no (can't search by null)
+        //   - this branch's stock is at or below the low-stock threshold
+        //   - the system has at least TWO warehouses (otherwise nothing to
+        //     request FROM)
+        //   - AND at least one OTHER warehouse holds the same item_no with
+        //     stock > 0 right now
         const reqBtn = $('#pdetailRequestBtn');
         if (reqBtn) {
             reqBtn.hidden = true;
-            const role = currentRole();
-            const canRequest = role !== 'warehouse_manager';
-            if (canRequest && stock <= 0 && p.item_no && window.CH && window.CH.productTransfers) {
-                window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null)
-                    .then((sources) => {
-                        if (sources && sources.length > 0 && activePdetailProduct && activePdetailProduct.id === p.id) {
-                            reqBtn.hidden = false;
-                        }
-                    })
-                    .catch(() => { /* table not migrated yet — silent */ });
-            }
+            shouldShowTransferRequestButton(p).then((show) => {
+                if (show && activePdetailProduct && activePdetailProduct.id === p.id) {
+                    reqBtn.hidden = false;
+                }
+            }).catch(() => { /* silent: keeps button hidden */ });
         }
 
         els.pdetail.classList.add('is-open');
@@ -1959,6 +1957,37 @@
         momo: ['MTN MoMo', 'Vodafone Cash', 'AirtelTigo Money'],
         bank: ['GCB Bank', 'Stanbic Bank', 'Ecobank', 'Fidelity Bank', 'CalBank', 'Zenith Bank', 'Access Bank', 'Absa Bank', 'UMB', 'GTBank', 'Republic Bank'],
     };
+
+    /**
+     * Returns whether the "Request from another branch" button should show
+     * for the given product. All checks must pass:
+     *   1. viewer is not a Warehouse Manager
+     *   2. product has an item_no
+     *   3. stock <= LOW_STOCK_THRESHOLD (low or out)
+     *   4. the system actually has 2+ warehouses
+     *   5. another warehouse holds this item_no with stock > 0
+     */
+    async function shouldShowTransferRequestButton(p) {
+        if (!p || !window.CH || !window.CH.productTransfers) return false;
+        if (currentRole() === 'warehouse_manager') return false;
+        if (!p.item_no) return false;
+        const stock = Number(p.stock) || 0;
+        if (stock > LOW_STOCK_THRESHOLD) return false;
+        // Need at least 2 warehouses to even have a "from" option.
+        try {
+            if (!warehousesCache || warehousesCache.length === 0) {
+                warehousesCache = await window.CH.warehouses.listWithBranches();
+            }
+        } catch (_) { return false; }
+        if (!warehousesCache || warehousesCache.length < 2) return false;
+        // At least one other warehouse must actually hold this item with stock.
+        try {
+            const sources = await window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null);
+            return !!(sources && sources.length > 0);
+        } catch (_) {
+            return false;
+        }
+    }
 
     function openProductTransferRequest(p) {
         if (!window.CH || !window.CH.productTransfers) {
