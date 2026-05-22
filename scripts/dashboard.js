@@ -261,6 +261,15 @@
 
     let previousView = 'products';
     function switchView(view) {
+        // Role guard: refuse views the current role isn't allowed to see.
+        const role = currentRole();
+        if (!viewAllowedForRole(view, role)) {
+            toast('You do not have access to that page.', 'error');
+            // Fall back to the first allowed view (almost always 'products')
+            const fallback = (VIEWS_BY_ROLE[role] || ['products'])[0];
+            if (fallback && fallback !== view) switchView(fallback);
+            return;
+        }
         if (view !== currentView) previousView = currentView || 'products';
         currentView = view;
         $$('.view').forEach((v) => v.classList.remove('is-active'));
@@ -301,12 +310,20 @@
         try {
             // Invalidate caches used by global search + showroom
             globalSearchData = null;
-            // Admin sees ALL products; non-admin sees only their branch.
-            // Drafts ARE included now — they show with a "Pending approval"
-            // badge until an admin opens, edits, and saves them.
-            const branchFilter = session.is_admin ? null : session.branch_id;
+            // Visibility rules:
+            //   Director       -> all branches
+            //   Branch Manager -> their branch
+            //   Warehouse Mgr  -> their warehouse only (independent of branch)
+            //   Staff          -> their branch
+            // Drafts are included; they show with a "Pending approval" badge.
+            const role = currentRole();
+            const branchFilter = (role === 'admin' || role === 'warehouse_manager') ? null : session.branch_id;
             const all = await window.CH.products.list(branchFilter);
-            products = all;
+            if (role === 'warehouse_manager' && session.warehouse_id) {
+                products = all.filter((p) => p.warehouse_id === session.warehouse_id);
+            } else {
+                products = all;
+            }
             renderProducts();
         } catch (e) {
             console.error(e);
@@ -3039,7 +3056,10 @@
 
     async function loadDrafts() {
         try {
-            const drafts = await window.CH.drafts.list();
+            // Director sees all drafts; Branch Manager only sees their branch.
+            const role = currentRole();
+            const filter = role === 'admin' ? undefined : session.branch_id;
+            const drafts = await window.CH.drafts.list(filter);
             allDraftsCache = drafts;
             // Drop any stale selections (drafts that no longer exist)
             const validIds = new Set(drafts.map((d) => d.id));
@@ -3295,9 +3315,18 @@
     });
 
     async function updateDraftsBadge() {
-        if (!session.is_admin) return;
+        // Drafts visible to: Director and Branch Manager
+        const role = currentRole();
+        if (role !== 'admin' && role !== 'branch_manager') return;
         try {
-            const n = await window.CH.drafts.count();
+            // For Branch Manager, count only their branch's drafts
+            let n;
+            if (role === 'branch_manager' && session.branch_id) {
+                const list = await window.CH.drafts.list(session.branch_id);
+                n = list.length;
+            } else {
+                n = await window.CH.drafts.count();
+            }
             if (n > 0) {
                 els.navDraftsBadge.textContent = n > 99 ? '99+' : String(n);
                 els.navDraftsBadge.hidden = false;
@@ -3327,7 +3356,15 @@
 
     async function loadLogs() {
         try {
-            allLogsCache = await window.CH.logs.list(500);
+            const all = await window.CH.logs.list(500);
+            // Branch Manager sees only logs scoped to their branch.
+            // Director sees everything.
+            const role = currentRole();
+            if (role === 'branch_manager' && session.branch_id) {
+                allLogsCache = all.filter((l) => l.branch_id === session.branch_id);
+            } else {
+                allLogsCache = all;
+            }
             renderLogs();
         } catch (err) {
             console.error(err);
@@ -3528,16 +3565,33 @@
         });
     }
 
-    /* ---------- role-based sidebar hiding ----------
-       Director sees everything. Warehouse Manager hides Showroom.
-       Branch Manager + Staff see the standard set. */
+    /* ---------- role-based access control ----------
+       Sets body[data-role] so CSS gating activates, and provides a
+       guard used by switchView() to block forbidden views server-free.
+       Source of truth for allowed views per role: */
+    const VIEWS_BY_ROLE = {
+        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements'],
+        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs'],
+        warehouse_manager: ['products','messages','announcements'],
+        staff:             ['products','showroom','reports','messages','announcements'],
+    };
+
+    function currentRole() {
+        if (!session) return 'staff';
+        if (session.is_admin) return 'admin';
+        const r = session.role;
+        if (['staff','branch_manager','warehouse_manager','admin'].includes(r)) return r;
+        return 'staff';
+    }
+
+    function viewAllowedForRole(view, role) {
+        const allowed = VIEWS_BY_ROLE[role] || VIEWS_BY_ROLE.staff;
+        return allowed.includes(view);
+    }
+
     function applyRoleVisibility() {
-        const role = (session && session.role) || (session && session.is_admin ? 'admin' : 'staff');
+        const role = currentRole();
         document.body.dataset.role = role;
-        // Hide showroom for warehouse_manager
-        if (role === 'warehouse_manager') {
-            $$('.nav a[data-view="showroom"]').forEach((el) => { el.style.display = 'none'; });
-        }
     }
 
     /* ---------- session_version check (force re-login on role change) */
@@ -3565,8 +3619,11 @@
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();
-        if (session.is_admin) await updateDraftsBadge();
-        if (!session.is_admin) await updateAnnouncementBadge();
+        // Drafts badge shows for Director + Branch Manager
+        const r = currentRole();
+        if (r === 'admin' || r === 'branch_manager') await updateDraftsBadge();
+        // Announcement badge shows for everyone EXCEPT Director
+        if (r !== 'admin') await updateAnnouncementBadge();
         setupRealtime();
         setupAnnouncementRealtime();
         setupProductRealtime();

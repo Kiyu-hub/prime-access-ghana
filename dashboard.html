@@ -251,10 +251,39 @@
             box-shadow: 0 0 12px rgba(56, 189, 248, 0.6);
         }
         .nav svg { width: 18px; height: 18px; stroke-width: 1.8; flex-shrink: 0; }
+
+        /* -------- Role-based sidebar gating --------
+           body[data-role] is set by applyRoleVisibility() at boot. Default
+           hides any item gated to a role we don't have; specific rules
+           below re-show items per role. The existing .admin-only legacy
+           class keeps working for "Director only" items. */
+
+        /* Legacy admin-only (Director ONLY) */
         .nav .admin-only { display: none; }
-        .is-admin .nav .admin-only { display: flex; }
-        .is-admin .nav__label.admin-only { display: block; }
-        body.is-admin .nav .staff-only { display: none !important; }
+        .is-admin .nav .admin-only,
+        body[data-role="admin"] .nav .admin-only { display: flex; }
+        .is-admin .nav__label.admin-only,
+        body[data-role="admin"] .nav__label.admin-only { display: block; }
+
+        /* Announcements (.staff-only) — visible to everyone EXCEPT Director.
+           Director sees announcements inside the Messages chat list. */
+        body.is-admin .nav .staff-only,
+        body[data-role="admin"] .nav .staff-only { display: none !important; }
+
+        /* Branch Manager: gets Drafts + Activity Logs too (admin-only items
+           are still hidden, but these two are unlocked). */
+        body[data-role="branch_manager"] .nav a[data-view="drafts"],
+        body[data-role="branch_manager"] .nav a[data-view="logs"] { display: flex !important; }
+        body[data-role="branch_manager"] .nav__label.admin-only { display: block !important; }
+
+        /* Warehouse Manager: no Showroom (warehouse is their world). */
+        body[data-role="warehouse_manager"] .nav a[data-view="showroom"] { display: none !important; }
+        body[data-role="warehouse_manager"] .nav a[data-view="reports"] { display: none !important; }
+
+        /* Plain Staff: hide Activity Logs nav link, but keep Drafts hidden.
+           (Already hidden via .admin-only, this is just an explicit assert.) */
+        body[data-role="staff"] .nav a[data-view="logs"],
+        body[data-role="staff"] .nav a[data-view="drafts"] { display: none !important; }
 
         .sb-user {
             padding: 14px;
