@@ -1,8 +1,11 @@
 /* ============================================================
-   Clasikal Homes — PWA install prompt
-   - Chromium / Android: captures beforeinstallprompt, shows floating chip
-   - iOS / Safari:       shows a one-time hint ("Share → Add to Home Screen")
-   - Hides if already installed (display-mode: standalone) or dismissed
+   Clasikal Homes — PWA install
+   Single branded chip, top-right-of-bottom corner. Adapts to platform:
+   - Chromium / Edge / Android: uses captured beforeinstallprompt
+   - iOS Safari: shows "Add to Home Screen" hint
+   - macOS Safari: shows toolbar / menu install hint
+   - Other desktops (Firefox, etc.): shows browser-menu hint
+   Add `?ch_force_prompt=1` to any URL to bypass dismissal and force-show.
    ============================================================ */
 (function () {
     'use strict';
@@ -10,103 +13,67 @@
     const DISMISS_KEY = 'ch_install_dismissed';
     const FORCE_PROMPT = new URL(location.href).searchParams.get('ch_force_prompt') === '1';
 
-    // Already installed (PWA) → nothing to do
+    // Already installed → nothing to do
     if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
-
-    // If forced via query param, clear any previous dismissal so prompt can show
     if (FORCE_PROMPT) localStorage.removeItem(DISMISS_KEY);
-
-    // User already dismissed → nothing to do (unless forced)
     if (localStorage.getItem(DISMISS_KEY) === '1' && !FORCE_PROMPT) return;
 
-    // ---- Floating chip ------------------------------------------------------
-    const chip = document.createElement('div');
-    chip.id = 'chInstallChip';
-    chip.style.cssText = `
-        position: fixed; right: 16px; bottom: 16px;
-        z-index: 9000;
-        display: none;
-        align-items: center;
-        gap: 10px;
-        max-width: calc(100vw - 32px);
-        padding: 10px 12px 10px 14px;
-        background: rgba(10, 26, 51, 0.92);
-        backdrop-filter: blur(14px) saturate(140%);
-        -webkit-backdrop-filter: blur(14px) saturate(140%);
-        color: #E2E8F0;
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        border-radius: 12px;
-        font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
-        opacity: 0;
-        transform: translateY(6px);
-        transition: opacity 200ms ease, transform 200ms ease;
-    `;
-    chip.innerHTML = `
-        <span style="display:inline-flex;width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#0EA5E9,#38BDF8);color:#051022;align-items:center;justify-content:center;flex-shrink:0;">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-        </span>
-        <span id="chInstallText" style="flex:1;min-width:0;">Install Clasikal Homes as an app</span>
-        <button id="chInstallBtn" type="button" style="
-            background: linear-gradient(135deg, #0EA5E9, #38BDF8);
-            color: #051022; border: 0;
-            padding: 7px 12px;
-            border-radius: 8px;
-            font: 600 12px/1 inherit; cursor: pointer;
-            letter-spacing: 0.02em;
-        ">Install</button>
-        <button id="chInstallClose" type="button" aria-label="Dismiss" style="
-            background: transparent; border: 0;
-            color: rgba(226, 232, 240, 0.6); cursor: pointer;
-            width: 28px; height: 28px; border-radius: 6px;
-            display: inline-grid; place-items: center;
-        ">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-        </button>
-    `;
-    // append the floating chip to the DOM
-    let pageInstallBtn = null;
-    document.addEventListener('DOMContentLoaded', () => {
-        document.body.appendChild(chip);
-        pageInstallBtn = document.querySelector('#chInstallPageBtn');
-        // Show the floating chip and/or page button when appropriate
-        const shouldShow = deferredPrompt || FORCE_PROMPT || isMacDesktop() || isIOS() || location.hostname === 'localhost';
-        if (shouldShow) {
-            // small delay so it doesn't slam the user on first paint
-            setTimeout(() => {
-                // prefer page-level button when present to avoid duplicate install controls
-                if (pageInstallBtn) {
-                    pageInstallBtn.style.display = 'inline-flex';
-                    // keep chip hidden when page button exists
-                    hide();
-                } else {
-                    show();
-                }
-            }, 600);
-        } else {
-            // If we have a page-level button, show it instead of auto-opening a dialog
-            if (pageInstallBtn) {
-                pageInstallBtn.style.display = 'inline-flex';
-            } else {
-                // fallback dialog for platforms that don't support beforeinstallprompt
-                setTimeout(showInstallDialogFallback, 1200);
-            }
-        }
-        // hide page button if already installed
-        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-            if (pageInstallBtn) pageInstallBtn.style.display = 'none';
-        }
-    });
+    // ---- One branded chip (NO duplicate buttons) ----------------------------
+    let deferredPrompt = null;
+    let chip = null;
+    let hint = null;
 
-    // basic chip show/hide
+    function buildChip() {
+        const el = document.createElement('div');
+        el.id = 'chInstallChip';
+        el.style.cssText = `
+            position: fixed; right: 16px; bottom: 16px;
+            z-index: 9000;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            max-width: calc(100vw - 32px);
+            padding: 10px 12px 10px 14px;
+            background: rgba(10, 26, 51, 0.94);
+            backdrop-filter: blur(14px) saturate(140%);
+            -webkit-backdrop-filter: blur(14px) saturate(140%);
+            color: #E2E8F0;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 14px;
+            font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity 200ms ease, transform 200ms ease;
+        `;
+        el.innerHTML = `
+            <img src="assets/logo.png?v=4" alt="" width="32" height="32" style="border-radius:8px;background:#fff;padding:3px;object-fit:contain;flex-shrink:0;" />
+            <span id="chInstallText" style="flex:1;min-width:0;">Install Clasikal Homes</span>
+            <button id="chInstallBtn" type="button" style="
+                background: linear-gradient(135deg, #0EA5E9, #38BDF8);
+                color: #051022; border: 0;
+                padding: 8px 14px; border-radius: 9px;
+                font: 600 12px/1 inherit; cursor: pointer;
+                letter-spacing: 0.02em; flex-shrink: 0;
+            ">Install</button>
+            <button id="chInstallClose" type="button" aria-label="Dismiss" style="
+                background: transparent; border: 0;
+                color: rgba(226, 232, 240, 0.55); cursor: pointer;
+                width: 28px; height: 28px; border-radius: 6px;
+                display: inline-grid; place-items: center; flex-shrink: 0;
+            ">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        `;
+        document.body.appendChild(el);
+        return el;
+    }
+
     function show() {
+        if (!chip) chip = buildChip();
         chip.style.display = 'flex';
         requestAnimationFrame(() => {
             chip.style.opacity = '1';
@@ -114,128 +81,124 @@
         });
     }
     function hide() {
+        if (!chip) return;
         chip.style.opacity = '0';
         chip.style.transform = 'translateY(6px)';
-        setTimeout(() => { chip.style.display = 'none'; }, 220);
+        setTimeout(() => { if (chip) chip.style.display = 'none'; }, 220);
     }
-
-    // small branded dialog fallback (for platforms that don't surface beforeinstallprompt)
-    let installDialog = null;
-
-    function createInstallDialog() {
-        const dialog = document.createElement('div');
-        dialog.id = 'chInstallDialog';
-        dialog.style.cssText = `
-            position: fixed;
-            right: 16px;
-            bottom: 16px;
-            z-index: 9001;
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-            width: min(420px, calc(100vw - 32px));
-            background: rgba(10, 26, 51, 0.96);
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            border-radius: 18px;
-            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
-            color: #E2E8F0;
-            font: 500 14px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            backdrop-filter: blur(18px) saturate(140%);
-            -webkit-backdrop-filter: blur(18px) saturate(140%);
-            overflow: hidden;
-            opacity: 0;
-            transform: translateY(10px);
-            transition: opacity 220ms ease, transform 220ms ease;
-        `;
-        dialog.innerHTML = `
-            <div style="display:flex;align-items:center;gap:12px;padding:16px;">
-                <img src="assets/logo.png" alt="Clasikal Homes" width="40" height="40" style="border-radius:14px;background:#fff;object-fit:cover;" />
-                <div style="min-width:0;flex:1;">
-                    <div style="font-size:0.95rem;font-weight:700;color:#fff;">Install Clasikal Homes</div>
-                    <div style="margin-top:4px;font-size:0.82rem;color:rgba(226,232,240,0.8);line-height:1.45;">Use Clasikal Homes like a native app for faster access and offline support.</div>
-                </div>
-            </div>
-            <div style="display:flex;gap:10px;padding:0 16px 16px;">
-                <button id="chInstallDialogBtn" type="button" style="flex:1;background:linear-gradient(135deg,#0EA5E9,#38BDF8);color:#051022;border:0;padding:10px 14px;border-radius:12px;font:600 0.86rem/1 inherit;cursor:pointer;">Install now</button>
-                <button id="chInstallDialogClose" type="button" style="background:transparent;border:1px solid rgba(226,232,240,0.18);color:#E2E8F0;padding:10px 14px;border-radius:12px;font:600 0.86rem/1 inherit;cursor:pointer;">Later</button>
-            </div>
-        `;
-        document.body.appendChild(dialog);
-        return dialog;
-    }
-
-    function showDialog() {
-        if (!installDialog) installDialog = createInstallDialog();
-        if (installDialog.style.display === 'flex') return;
-        // hide chip and page button while dialog is visible
-        hide();
-        if (pageInstallBtn) pageInstallBtn.style.display = 'none';
-        installDialog.style.display = 'flex';
-        requestAnimationFrame(() => {
-            installDialog.style.opacity = '1';
-            installDialog.style.transform = 'translateY(0)';
-        });
-    }
-
-    function hideDialog() {
-        if (!installDialog) return;
-        installDialog.style.opacity = '0';
-        installDialog.style.transform = 'translateY(10px)';
-        setTimeout(() => {
-            if (installDialog) installDialog.style.display = 'none';
-            // restore chip/page button if install not completed or dismissed
-            if (!(window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true)) {
-                if (localStorage.getItem(DISMISS_KEY) !== '1') {
-                    if (deferredPrompt || FORCE_PROMPT || isMacDesktop() || isIOS() || location.hostname === 'localhost') show();
-                    if (pageInstallBtn) pageInstallBtn.style.display = 'inline-flex';
-                }
-            }
-        }, 240);
-    }
-
     function dismissForever() {
         localStorage.setItem(DISMISS_KEY, '1');
         hide();
-        hideDialog();
-        if (pageInstallBtn) pageInstallBtn.style.display = 'none';
+        if (hint) hint.remove();
     }
 
-    function showInstallDialogFallback() {
-        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) return;
-        if (localStorage.getItem(DISMISS_KEY) === '1') return;
-        if (deferredPrompt) return;
-        showDialog();
+    // ---- Platform-specific install hints ------------------------------------
+    function isIOS() {
+        const ua = navigator.userAgent || '';
+        const iOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+        const iPadOS = navigator.maxTouchPoints > 1 && /Macintosh/.test(ua);
+        return iOS || iPadOS;
+    }
+    function isMacDesktop() {
+        return /Macintosh/.test(navigator.userAgent || '') && !isIOS();
+    }
+    function isFirefox() {
+        return /Firefox/.test(navigator.userAgent || '');
+    }
+    function isEdgeOrChrome() {
+        const ua = navigator.userAgent || '';
+        return /Chrome|Edg/.test(ua);
     }
 
-    // ---- Chromium / Edge / Android (beforeinstallprompt) --------------------
-    let deferredPrompt = null;
+    function showHint() {
+        if (hint) { hint.remove(); hint = null; }
+        let title, detail;
+        if (isIOS()) {
+            title = 'Install on iPhone / iPad';
+            detail = 'Tap the <b>Share</b> button in Safari (square with the up arrow), then choose <b>Add to Home Screen</b>.';
+        } else if (isMacDesktop()) {
+            title = 'Install on Mac';
+            detail = 'In Safari: <b>File → Add to Dock</b>. In Chrome / Edge: click the install icon (⊕) in the address bar, or use <b>menu → Install Clasikal Homes</b>.';
+        } else if (isFirefox()) {
+            title = 'Install on Firefox';
+            detail = 'Firefox desktop does not support installing web apps. To install, open this page in <b>Chrome</b> or <b>Edge</b> and use the install button in the address bar.';
+        } else if (isEdgeOrChrome()) {
+            title = 'Install Clasikal Homes';
+            detail = 'Click the install icon (⊕) on the right side of the address bar, or open the browser <b>⋮ menu → Install Clasikal Homes</b>.';
+        } else {
+            title = 'Install Clasikal Homes';
+            detail = 'Open your browser menu and look for <b>Install</b> or <b>Add to Home Screen</b>.';
+        }
+        hint = document.createElement('div');
+        hint.id = 'chInstallHint';
+        hint.style.cssText = `
+            position: fixed; right: 16px; bottom: 78px;
+            z-index: 9001;
+            max-width: min(380px, calc(100vw - 32px));
+            padding: 16px 18px;
+            background: rgba(10, 26, 51, 0.97);
+            color: #E2E8F0;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            border-radius: 14px;
+            font: 500 13px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        `;
+        hint.innerHTML = `
+            <div style="display:flex;align-items:flex-start;gap:10px;">
+                <img src="assets/logo.png?v=4" alt="" width="28" height="28" style="border-radius:7px;background:#fff;padding:2px;object-fit:contain;flex-shrink:0;" />
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;color:#fff;margin-bottom:4px;">${title}</div>
+                    <div>${detail}</div>
+                </div>
+                <button id="chInstallHintClose" type="button" aria-label="Close" style="
+                    background:transparent;border:0;color:rgba(226,232,240,0.55);
+                    cursor:pointer;width:24px;height:24px;border-radius:5px;flex-shrink:0;
+                    display:grid;place-items:center;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            </div>
+        `;
+        document.body.appendChild(hint);
+        hint.querySelector('#chInstallHintClose').addEventListener('click', () => { hint.remove(); hint = null; });
+    }
+
+    // ---- Wire it up ---------------------------------------------------------
+    // Capture Chromium / Edge / Android prompt
     window.addEventListener('beforeinstallprompt', (e) => {
         e.preventDefault();
         deferredPrompt = e;
-        setTimeout(show, 800); // small delay so it doesn't slam the user on first paint
+        // If chip is already up, update its label
+        if (chip) {
+            const txt = chip.querySelector('#chInstallText');
+            if (txt) txt.textContent = 'Install Clasikal Homes';
+        }
     });
 
-    // NOTE: DOMContentLoaded handler is defined above; remove duplicate handlers.
+    // Show the chip after a short delay if any install path is plausible
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+            // Always show on these — every desktop and mobile is supported
+            // via either the native prompt or platform-specific hint.
+            show();
+        }, 700);
+    });
 
+    // Single delegated handler for all chip buttons
     document.addEventListener('click', async (e) => {
-        if (e.target.closest('#chInstallClose') || e.target.closest('#chInstallDialogClose')) { dismissForever(); return; }
-        const isPageButton = Boolean(e.target.closest('#chInstallPageBtn'));
-        if (e.target.closest('#chInstallBtn') || e.target.closest('#chInstallDialogBtn') || isPageButton) {
-            const isDialogButton = Boolean(e.target.closest('#chInstallDialogBtn'));
+        if (e.target.closest('#chInstallClose')) { dismissForever(); return; }
+        if (e.target.closest('#chInstallBtn')) {
             if (deferredPrompt) {
-                if (isDialogButton || isPageButton) hideDialog(); else hide();
+                hide();
                 deferredPrompt.prompt();
                 try {
                     const { outcome } = await deferredPrompt.userChoice;
                     if (outcome === 'accepted') localStorage.setItem(DISMISS_KEY, '1');
+                    else show(); // user dismissed — keep chip available
                 } catch (_) {}
                 deferredPrompt = null;
-            } else if (isIOS() || isMacDesktop()) {
-                if (isDialogButton || isPageButton) hideDialog();
-                showInstallHint();
-            } else if (isDialogButton) {
-                const text = document.querySelector('#chInstallDialog div div');
-                if (text) text.textContent = 'Use your browser menu or toolbar icon to install Clasikal Homes.';
+            } else {
+                // No native prompt available — show the platform-specific hint
+                showHint();
             }
         }
     });
@@ -243,46 +206,6 @@
     window.addEventListener('appinstalled', () => {
         localStorage.setItem(DISMISS_KEY, '1');
         hide();
-        hideDialog();
-        if (pageInstallBtn) pageInstallBtn.style.display = 'none';
+        if (hint) hint.remove();
     });
-
-    // ---- helpers and hints --------------------------------------------------
-    function isIOS() {
-        const ua = navigator.userAgent || '';
-        const iOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
-        const iPadOS = navigator.maxTouchPoints > 1 && /Macintosh/.test(ua);
-        return iOS || iPadOS;
-    }
-
-    function isMacDesktop() {
-        return /Macintosh/.test(navigator.userAgent || '') && !isIOS();
-    }
-
-    function showInstallHint() {
-        const hint = document.createElement('div');
-        hint.style.cssText = `
-            position: fixed; left: 50%; bottom: 80px;
-            transform: translateX(-50%);
-            z-index: 9001;
-            max-width: calc(100vw - 32px);
-            padding: 14px 16px;
-            background: rgba(10, 26, 51, 0.96);
-            color: #E2E8F0;
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            border-radius: 12px;
-            font: 500 13px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
-        `;
-        const title = isMacDesktop() ? 'To install on Mac desktop' : 'To install on iPhone / iPad';
-        const detail = isMacDesktop()
-            ? 'Open the browser menu and choose Install App, or use the toolbar install icon.'
-            : 'Tap the Share button in Safari, then choose Add to Home Screen.';
-        hint.innerHTML = `
-            <div style="font-weight:600;margin-bottom:4px;">${title}</div>
-            <div style="line-height:1.5;">${detail}</div>
-        `;
-        document.body.appendChild(hint);
-        setTimeout(() => hint.remove(), 8000);
-    }
 })();

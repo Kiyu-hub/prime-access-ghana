@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#061427" />
     <title>Inventory — Clasikal Homes</title>
-    <link rel="icon" type="image/png" href="assets/logo.png" />
-    <link rel="apple-touch-icon" href="assets/logo.png" />
-    <link rel="apple-touch-icon" sizes="192x192" href="assets/logo.png" />
-    <link rel="apple-touch-icon" sizes="512x512" href="assets/logo.png" />
+    <link rel="icon" type="image/png" href="assets/logo.png?v=4" />
+    <link rel="apple-touch-icon" href="assets/logo.png?v=4" />
+    <link rel="apple-touch-icon" sizes="180x180" href="assets/logo.png?v=4" />
+    <link rel="apple-touch-icon" sizes="192x192" href="assets/logo.png?v=4" />
+    <link rel="apple-touch-icon" sizes="512x512" href="assets/logo.png?v=4" />
     <link rel="manifest" href="manifest.webmanifest" />
 
     <!-- PWA install — iOS / Safari -->
@@ -20,7 +21,7 @@
 
     <!-- PWA install — Microsoft Edge / Windows tile -->
     <meta name="msapplication-TileColor" content="#061427" />
-    <meta name="msapplication-TileImage" content="assets/logo.png" />
+    <meta name="msapplication-TileImage" content="assets/logo.png?v=4" />
     <meta name="msapplication-navbutton-color" content="#061427" />
     <meta name="format-detection" content="telephone=no" />
     <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
@@ -314,7 +315,7 @@
         }
         .logout-btn:hover { color: var(--c-white); background: rgba(255, 255, 255, 0.08); }
 
-        /* App version footer in the sidebar */
+        /* App version footer in the sidebar — clickable to check for updates */
         .sb-version {
             display: flex;
             justify-content: space-between;
@@ -327,7 +328,16 @@
             color: rgba(255, 255, 255, 0.32);
             font-weight: 500;
             min-width: 0;
+            background: transparent;
+            border: 0;
+            width: 100%;
+            cursor: pointer;
+            font-family: inherit;
+            text-align: left;
+            transition: color var(--t-fast);
         }
+        .sb-version:hover { color: rgba(255, 255, 255, 0.6); }
+        .sb-version:hover .sb-version__num { color: rgba(255, 255, 255, 0.85); }
         .sb-version > span:first-child {
             overflow: hidden;
             text-overflow: ellipsis;
@@ -2731,10 +2741,10 @@
                 </button>
             </div>
 
-            <div class="sb-version" title="App version">
+            <button type="button" class="sb-version" id="sbVersionBtn" title="Tap to check for updates">
                 <span>Clasikal Homes</span>
                 <span class="sb-version__num" id="sbVersion">v—</span>
-            </div>
+            </button>
         </aside>
 
         <!-- MAIN -->
@@ -3671,11 +3681,13 @@
     <script src="scripts/install.js"></script>
 
     <script type="module">
-        import { initReveal, initMobileNav, registerSW, showAppVersion } from './scripts/ui.js';
+        import { initReveal, initMobileNav, registerSW, showAppVersion, checkForUpdates } from './scripts/ui.js';
         initReveal();
         initMobileNav();
         registerSW();
         showAppVersion('#sbVersion');
+        const versionBtn = document.getElementById('sbVersionBtn');
+        if (versionBtn) versionBtn.addEventListener('click', () => checkForUpdates('#sbVersionBtn'));
     </script>
 </body>
 </html>

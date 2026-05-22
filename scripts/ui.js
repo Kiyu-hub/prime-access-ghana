@@ -269,6 +269,59 @@ export function showAppVersion(selector = '#sbVersion') {
     el.textContent = v || 'v—';
 }
 
+/**
+ * Manually triggers a service-worker update check. Clears the snooze so
+ * any waiting update shows its dialog immediately. Bound to the version
+ * badge so the user can tap it any time.
+ */
+export async function checkForUpdates(btnSelector = '#sbVersionBtn') {
+    const btn = btnSelector ? document.querySelector(btnSelector) : null;
+    const restore = btn && btn.querySelector('.sb-version__num') ? btn.querySelector('.sb-version__num').textContent : '';
+    try {
+        if (btn && btn.querySelector('.sb-version__num')) btn.querySelector('.sb-version__num').textContent = '…';
+        // Always clear snooze when user manually checks
+        localStorage.removeItem(UPDATE_SNOOZE_KEY);
+        if (!('serviceWorker' in navigator)) {
+            toast('Updates not supported by this browser.');
+            return;
+        }
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg) {
+            toast('Reload the page to install the latest version.');
+            return;
+        }
+        await reg.update();
+        // If a waiting SW exists after update, show the dialog now
+        if (reg.waiting && navigator.serviceWorker.controller) {
+            showUpdateDialog(reg);
+        } else {
+            toast('You are on the latest version.');
+        }
+    } catch (e) {
+        console.warn('[CH] update check failed:', e);
+        toast('Could not check for updates.');
+    } finally {
+        if (btn && btn.querySelector('.sb-version__num') && restore) {
+            btn.querySelector('.sb-version__num').textContent = restore;
+        }
+    }
+}
+
+// Tiny toast for the version badge (avoids depending on dashboard.js's toast)
+function toast(msg) {
+    let host = document.getElementById('chUiToast');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'chUiToast';
+        host.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9500;background:rgba(15,23,42,0.94);color:#fff;padding:10px 18px;border-radius:999px;font:500 13px/1.3 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 16px 40px rgba(0,0,0,0.3);opacity:0;transition:opacity 200ms ease;pointer-events:none;';
+        document.body.appendChild(host);
+    }
+    host.textContent = msg;
+    host.style.opacity = '1';
+    clearTimeout(host._t);
+    host._t = setTimeout(() => { host.style.opacity = '0'; }, 2400);
+}
+
 export function initYear(selector = '#year') {
     document.querySelectorAll(selector).forEach((el) => {
         el.textContent = new Date().getFullYear();

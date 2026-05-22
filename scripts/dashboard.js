@@ -230,14 +230,14 @@
     /* ---------- user header ---------- */
     els.userName.textContent = session.name || 'Staff';
     els.userBranch.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || '');
-    // Director: avatar is the brand logo. Staff: initials in a coloured circle.
-    if (session.is_admin) {
-        els.userAvatar.textContent = '';
-        els.userAvatar.classList.add('avatar--logo');
-        els.userAvatar.innerHTML = '<img src="assets/logo.png" alt="" />';
-    } else {
-        els.userAvatar.textContent = initials(session.name || 'CH');
-    }
+    // Avatar always uses the brand logo (single brand identity for every user).
+    els.userAvatar.classList.add('avatar--logo');
+    els.userAvatar.replaceChildren(); // wipe stale text/children
+    const logoImg = new Image();
+    logoImg.src = 'assets/logo.png?v=4';
+    logoImg.alt = '';
+    logoImg.draggable = false;
+    els.userAvatar.appendChild(logoImg);
     els.branchHeading.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || 'Staff');
 
     /* ---------- view switcher (sidebar nav) ---------- */
