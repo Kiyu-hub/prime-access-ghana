@@ -228,6 +228,8 @@
     let materialsCache = [];     // same shape
     let allDraftsCache = [];     // current drafts shown in the table
     let selectedDraftIds = new Set(); // ids of drafts ticked in the table
+    let warehousesCache = [];    // [{ id, name, code, ..., branches: [...] }]
+    let allBranchesCacheList = []; // mirrors `allBranchesCache` for the warehouse modal
 
     /* ---------- user header ---------- */
     els.userName.textContent = session.name || 'Staff';
@@ -277,6 +279,7 @@
         if (view === 'extract')  initExtract();
         if (view === 'announcements') loadAnnouncements();
         if (view === 'taxonomy') loadTaxonomy();
+        if (view === 'warehouses') loadWarehouses();
     }
 
     /* ---------- logout ---------- */
@@ -1105,6 +1108,197 @@
     });
 
     /* ============================================================
+       WAREHOUSES (admin) — storage units linked to branches
+       ============================================================ */
+
+    const WAREHOUSE_ELS = {
+        body:    $('#warehousesBody'),
+        empty:   $('#warehousesEmpty'),
+        modal:   $('#warehouseModal'),
+        title:   $('#warehouseModalTitle'),
+        form:    $('#warehouseForm'),
+        editId:  $('#warehouseEditId'),
+        name:    $('#warehouseName'),
+        code:    $('#warehouseCode'),
+        location:$('#warehouseLocation'),
+        manager: $('#warehouseManager'),
+        links:   $('#warehouseBranchLinks'),
+        addBtn:  $('#addWarehouseBtn'),
+    };
+
+    async function loadWarehouses() {
+        if (!session.is_admin) return;
+        try {
+            warehousesCache = await window.CH.warehouses.listWithBranches();
+            if (allBranchesCache.length === 0) allBranchesCache = await window.CH.branches.list();
+            allBranchesCacheList = allBranchesCache;
+            renderWarehouses();
+        } catch (err) {
+            console.error(err);
+            if (isMissingTableError(err)) {
+                showEmpty(WAREHOUSE_ELS.body, WAREHOUSE_ELS.empty, 'Warehouses not enabled yet', 'Please ask the Director to run the latest setup.');
+            } else {
+                toast('Could not load warehouses: ' + (err.message || 'unknown error'), 'error');
+            }
+        }
+    }
+
+    function renderWarehouses() {
+        if (!WAREHOUSE_ELS.body) return;
+        if (warehousesCache.length === 0) {
+            WAREHOUSE_ELS.body.innerHTML = '';
+            WAREHOUSE_ELS.empty.style.display = 'block';
+            return;
+        }
+        WAREHOUSE_ELS.empty.style.display = 'none';
+        const managerById = new Map(staffList.map((s) => [s.id, s.name]));
+        WAREHOUSE_ELS.body.innerHTML = warehousesCache.map((w) => {
+            const linkedBranches = (w.branches || []).map((b) => `${escapeHtml(b.branch_name || '?')}${b.is_default ? ' <span class="pill" style="font-size:0.62rem;padding:1px 6px;">default</span>' : ''}`).join(', ') || '<span style="color:var(--c-ink-5);">— none —</span>';
+            return `<tr>
+                <td><strong style="color:var(--c-ink-2);">${escapeHtml(w.name)}</strong></td>
+                <td><span class="itemno">${escapeHtml(w.code)}</span></td>
+                <td>${escapeHtml(w.location || '—')}</td>
+                <td>${escapeHtml(managerById.get(w.manager_staff_id) || '—')}</td>
+                <td>${linkedBranches}</td>
+                <td>
+                    <div class="row-actions">
+                        <button class="icon-btn" data-edit-wh="${w.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                        <button class="icon-btn icon-btn--danger" data-del-wh="${w.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
+                    </div>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function populateWarehouseManagerSelect() {
+        if (!WAREHOUSE_ELS.manager) return;
+        const opts = ['<option value="">— No manager assigned —</option>']
+            .concat((staffList || []).filter((s) => s.role === 'warehouse_manager' || s.role === 'admin').map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
+            .join('');
+        WAREHOUSE_ELS.manager.innerHTML = opts;
+    }
+
+    function renderWarehouseBranchLinks(warehouseId) {
+        if (!WAREHOUSE_ELS.links) return;
+        const wh = warehousesCache.find((x) => x.id === warehouseId);
+        const linkedMap = new Map((wh && wh.branches) ? wh.branches.map((b) => [b.branch_id, b]) : []);
+        WAREHOUSE_ELS.links.innerHTML = (allBranchesCacheList || []).map((b) => {
+            const link = linkedMap.get(b.id);
+            const checked = link ? 'checked' : '';
+            const isDefault = link && link.is_default ? 'checked' : '';
+            const radioDisabled = link ? '' : 'disabled';
+            return `<label class="wh-branch-link">
+                <input type="checkbox" data-wh-link-branch="${b.id}" ${checked} />
+                <span class="wh-branch-link__name">${escapeHtml(b.name)}</span>
+                <span class="wh-branch-link__default"><input type="radio" name="whDefaultBranch" value="${b.id}" ${isDefault} ${radioDisabled} /> default</span>
+            </label>`;
+        }).join('');
+        // Toggle radio enable/disable when checkbox changes
+        WAREHOUSE_ELS.links.querySelectorAll('input[data-wh-link-branch]').forEach((cb) => {
+            cb.addEventListener('change', (e) => {
+                const branchId = e.target.dataset.whLinkBranch;
+                const radio = WAREHOUSE_ELS.links.querySelector(`input[name="whDefaultBranch"][value="${branchId}"]`);
+                if (!radio) return;
+                radio.disabled = !e.target.checked;
+                if (!e.target.checked) radio.checked = false;
+            });
+        });
+    }
+
+    function openWarehouseAdd() {
+        WAREHOUSE_ELS.title.textContent = 'Add Warehouse';
+        WAREHOUSE_ELS.editId.value = '';
+        WAREHOUSE_ELS.form.reset();
+        populateWarehouseManagerSelect();
+        renderWarehouseBranchLinks(null);
+        WAREHOUSE_ELS.modal.classList.add('is-open');
+        setTimeout(() => WAREHOUSE_ELS.name.focus(), 40);
+    }
+
+    function openWarehouseEdit(id) {
+        const w = warehousesCache.find((x) => x.id === id);
+        if (!w) return;
+        WAREHOUSE_ELS.title.textContent = 'Edit Warehouse · ' + w.name;
+        WAREHOUSE_ELS.editId.value = id;
+        WAREHOUSE_ELS.name.value = w.name || '';
+        WAREHOUSE_ELS.code.value = w.code || '';
+        WAREHOUSE_ELS.location.value = w.location || '';
+        populateWarehouseManagerSelect();
+        WAREHOUSE_ELS.manager.value = w.manager_staff_id || '';
+        renderWarehouseBranchLinks(id);
+        WAREHOUSE_ELS.modal.classList.add('is-open');
+    }
+
+    if (WAREHOUSE_ELS.addBtn) WAREHOUSE_ELS.addBtn.addEventListener('click', openWarehouseAdd);
+    if (WAREHOUSE_ELS.body) WAREHOUSE_ELS.body.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('[data-edit-wh]');
+        if (editBtn) { openWarehouseEdit(editBtn.dataset.editWh); return; }
+        const delBtn = e.target.closest('[data-del-wh]');
+        if (delBtn) deleteWarehouse(delBtn.dataset.delWh);
+    });
+
+    if (WAREHOUSE_ELS.form) WAREHOUSE_ELS.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const id = WAREHOUSE_ELS.editId.value;
+        const name = WAREHOUSE_ELS.name.value.trim();
+        const code = WAREHOUSE_ELS.code.value.trim();
+        if (!name || !code) { toast('Name and code are required.', 'error'); return; }
+        // Collect linked branches + default
+        const linkInputs = Array.from(WAREHOUSE_ELS.links.querySelectorAll('input[data-wh-link-branch]'));
+        const defaultRadio = WAREHOUSE_ELS.links.querySelector('input[name="whDefaultBranch"]:checked');
+        const defaultBranchId = defaultRadio ? defaultRadio.value : null;
+        const branch_links = linkInputs.filter((cb) => cb.checked).map((cb) => ({
+            branch_id: cb.dataset.whLinkBranch,
+            is_default: cb.dataset.whLinkBranch === defaultBranchId,
+        }));
+        try {
+            if (id) {
+                await window.CH.warehouses.update(id, {
+                    name, code,
+                    location: WAREHOUSE_ELS.location.value.trim(),
+                    manager_staff_id: WAREHOUSE_ELS.manager.value || null,
+                });
+                await window.CH.warehouses.replaceBranchLinks(id, branch_links);
+                await window.CH.logs.record({ action: 'warehouse_updated', staff_id: session.id, staff_name: session.name, note: 'updated warehouse "' + name + '" (' + code + ')' });
+                toast('Warehouse updated.', 'success');
+            } else {
+                await window.CH.warehouses.add({
+                    name, code,
+                    location: WAREHOUSE_ELS.location.value.trim(),
+                    manager_staff_id: WAREHOUSE_ELS.manager.value || null,
+                    branch_links,
+                });
+                await window.CH.logs.record({ action: 'warehouse_created', staff_id: session.id, staff_name: session.name, note: 'created warehouse "' + name + '" (' + code + ')' });
+                toast('Warehouse added.', 'success');
+            }
+            WAREHOUSE_ELS.modal.classList.remove('is-open');
+            await loadWarehouses();
+        } catch (err) {
+            console.error(err);
+            const msg = (err && err.message) || '';
+            if (msg.toLowerCase().includes('duplicate') || (err && err.code === '23505')) {
+                toast('A warehouse with that code already exists.', 'error');
+            } else {
+                toast('Could not save warehouse: ' + (msg || 'unknown error'), 'error');
+            }
+        }
+    });
+
+    async function deleteWarehouse(id) {
+        const w = warehousesCache.find((x) => x.id === id);
+        if (!w) return;
+        if (!confirm('Delete warehouse "' + w.name + '"?\nProducts linked to it will become unassigned.\nThis cannot be undone.')) return;
+        try {
+            await window.CH.warehouses.remove(id);
+            await window.CH.logs.record({ action: 'warehouse_deleted', staff_id: session.id, staff_name: session.name, note: 'deleted warehouse "' + w.name + '" (' + w.code + ')' });
+            toast('Warehouse deleted.', 'success');
+            await loadWarehouses();
+        } catch (err) {
+            toast('Could not delete warehouse: ' + (err.message || 'unknown error'), 'error');
+        }
+    }
+
+    /* ============================================================
        BRANCHES (admin)
        ============================================================ */
 
@@ -1257,6 +1451,8 @@
         }
         els.staffEmpty.style.display = 'none';
 
+        const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director' })[r] || (r || 'Staff');
+        const rolePillClass = (r) => r === 'admin' ? 'pill pill--admin' : 'pill';
         els.staffBody.innerHTML = staffList.map((s) => `
             <tr>
                 <td>
@@ -1266,9 +1462,10 @@
                     </div>
                 </td>
                 <td><span style="font-family:var(--f-mono);font-size:0.84rem;color:var(--c-ink-3);">${escapeHtml(s.email)}</span></td>
-                <td>${escapeHtml(s.role || '—')}</td>
+                <td><span class="itemno">${escapeHtml(s.staff_code || '—')}</span></td>
+                <td><span class="${rolePillClass(s.role)}">${escapeHtml(roleLabel(s.role))}</span></td>
                 <td>${escapeHtml(s.branch_name || '— Unassigned —')}</td>
-                <td>${s.is_admin ? '<span class="pill pill--admin">Director</span>' : '<span class="pill">Staff</span>'}</td>
+                <td>${escapeHtml(s.warehouse_name || (s.role === 'warehouse_manager' ? '— Unassigned —' : '—'))}</td>
                 <td>
                     <div class="row-actions">
                         <button class="icon-btn" data-edit-staff="${s.id}" title="Edit" aria-label="Edit">
@@ -1292,6 +1489,21 @@
 
     els.addStaffBtn.addEventListener('click', () => openStaffAdd());
 
+    function populateStaffWarehouseSelect() {
+        const sel = $('#staffWarehouse');
+        if (!sel) return;
+        const opts = ['<option value="">— Select warehouse —</option>']
+            .concat((warehousesCache || []).map((w) => `<option value="${w.id}">${escapeHtml(w.name)} (${escapeHtml(w.code)})</option>`))
+            .join('');
+        sel.innerHTML = opts;
+    }
+
+    function toggleStaffWarehouseField() {
+        const wrap = $('#staffWarehouseField');
+        if (!wrap) return;
+        wrap.style.display = (els.staffRole.value === 'warehouse_manager') ? '' : 'none';
+    }
+
     function openStaffAdd() {
         els.staffModalTitle.textContent = 'Add Staff';
         els.staffEditId.value = '';
@@ -1300,6 +1512,11 @@
         els.staffPasswordReq.style.display = 'inline';
         els.staffPassword.required = true;
         populateBranchSelect();
+        populateStaffWarehouseSelect();
+        els.staffRole.value = 'staff';
+        toggleStaffWarehouseField();
+        const codeField = $('#staffCodeDisplay');
+        if (codeField) codeField.value = '(generated on save)';
         els.staffModal.classList.add('is-open');
         setTimeout(() => els.staffName.focus(), 50);
     }
@@ -1315,25 +1532,39 @@
         els.staffPasswordHint.textContent = '(leave blank to keep existing)';
         els.staffPasswordReq.style.display = 'none';
         els.staffPassword.required = false;
-        els.staffRole.value = s.role || 'Showroom Staff';
         populateBranchSelect();
+        populateStaffWarehouseSelect();
         els.staffBranch.value = s.branch_id || '';
-        els.staffIsAdmin.checked = !!s.is_admin;
+        // Normalize legacy free-text role to enum on display
+        const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
+        els.staffRole.value = enumRole;
+        toggleStaffWarehouseField();
+        const whSel = $('#staffWarehouse');
+        if (whSel) whSel.value = s.warehouse_id || '';
+        els.staffIsAdmin.value = s.is_admin ? '1' : '';
+        const codeField = $('#staffCodeDisplay');
+        if (codeField) codeField.value = s.staff_code || '(not yet generated)';
         els.staffModal.classList.add('is-open');
     }
+
+    if (els.staffRole) els.staffRole.addEventListener('change', toggleStaffWarehouseField);
 
     els.staffForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = els.staffEditId.value;
+        const role = els.staffRole.value || 'staff';
+        const warehouseSel = $('#staffWarehouse');
+        const warehouseId = (role === 'warehouse_manager' && warehouseSel) ? (warehouseSel.value || null) : null;
         const payload = {
             name: els.staffName.value.trim(),
             email: els.staffEmail.value.trim().toLowerCase(),
             password: els.staffPassword.value,
-            role: els.staffRole.value,
+            role,
             branch_id: els.staffBranch.value || null,
-            is_admin: els.staffIsAdmin.checked,
+            is_admin: role === 'admin',
         };
         if (!payload.name || !payload.email) { toast('Name and email are required.', 'error'); return; }
+        if (role === 'warehouse_manager' && !warehouseId) { toast('Warehouse Manager must be assigned to a warehouse.', 'error'); return; }
         if (!id && (!payload.password || payload.password.length < 6)) {
             toast('Password must be at least 6 characters.', 'error');
             return;
@@ -1343,14 +1574,26 @@
             return;
         }
         try {
+            const prev = id ? staffList.find((x) => x.id === id) : null;
+            const prevRole = prev ? (prev.role || (prev.is_admin ? 'admin' : 'staff')) : null;
+            let staffId = id;
             if (id) {
                 await window.CH.staff.update(id, payload);
                 window.CH.logs.record({ action: 'staff_updated', staff_id: session.id, staff_name: session.name, note: 'updated ' + payload.name + ' (' + payload.email + ')' });
+                // Role changed -> bump session_version via assign_role so the
+                // affected staff is forced to sign in again with new permissions.
+                if (prevRole && prevRole !== role) {
+                    try { await window.CH.roles.assign(id, role, session.id); } catch (e) { console.warn('assign_role failed:', e); }
+                }
                 toast('Staff updated.', 'success');
             } else {
-                await window.CH.staff.create(payload);
+                staffId = await window.CH.staff.create(payload);
                 window.CH.logs.record({ action: 'staff_created', staff_id: session.id, staff_name: session.name, note: 'added ' + payload.name + ' (' + payload.email + ')' });
                 toast('Staff added. They can sign in now.', 'success');
+            }
+            // Warehouse assignment is independent of the create_staff/update_staff RPC
+            if (staffId) {
+                try { await window.CH.staff.setWarehouse(staffId, warehouseId); } catch (e) { console.warn('setWarehouse failed:', e); }
             }
             els.staffModal.classList.remove('is-open');
             await loadStaff();
@@ -1392,7 +1635,7 @@
             if (m) m.classList.remove('is-open');
         });
     });
-    [els.branchModal, els.staffModal].forEach((m) => {
+    [els.branchModal, els.staffModal, WAREHOUSE_ELS.modal].filter(Boolean).forEach((m) => {
         m.addEventListener('click', (e) => { if (e.target === m) m.classList.remove('is-open'); });
     });
 
@@ -3282,8 +3525,38 @@
         });
     }
 
+    /* ---------- role-based sidebar hiding ----------
+       Director sees everything. Warehouse Manager hides Showroom.
+       Branch Manager + Staff see the standard set. */
+    function applyRoleVisibility() {
+        const role = (session && session.role) || (session && session.is_admin ? 'admin' : 'staff');
+        document.body.dataset.role = role;
+        // Hide showroom for warehouse_manager
+        if (role === 'warehouse_manager') {
+            $$('.nav a[data-view="showroom"]').forEach((el) => { el.style.display = 'none'; });
+        }
+    }
+
+    /* ---------- session_version check (force re-login on role change) */
+    async function verifySessionStillValid() {
+        try {
+            if (!session || !session.id) return;
+            // session.session_version is set on verify_login when the latest
+            // SQL migration is in place; bail if absent (older session).
+            if (typeof session.session_version !== 'number') return;
+            if (!window.CH || !window.CH.roles || !window.CH.roles.checkSession) return;
+            const ok = await window.CH.roles.checkSession(session.id, session.session_version);
+            if (!ok) {
+                toast('Your role was changed. Please sign in again.', 'info');
+                window.CH.signOut();
+                setTimeout(() => window.location.replace('index.html'), 1500);
+            }
+        } catch (_) { /* silent */ }
+    }
+
     /* ---------- initial load ---------- */
     (async function init() {
+        applyRoleVisibility();
         // Refresh taxonomy first so any modal opened during boot has dropdowns ready
         await refreshTaxonomyCache();
         await loadProducts();
@@ -3295,5 +3568,11 @@
         setupAnnouncementRealtime();
         setupProductRealtime();
         requestNotificationPermissionOnce();
+        // Check periodically whether the server has bumped session_version
+        verifySessionStillValid();
+        setInterval(verifySessionStillValid, 90 * 1000);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') verifySessionStillValid();
+        });
     })();
 })();

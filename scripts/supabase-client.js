@@ -132,6 +132,11 @@
             const { error } = await client.from('staff').delete().eq('id', id);
             if (error) throw error;
         },
+        // Assigns or clears a warehouse for a warehouse_manager staff.
+        async setWarehouse(id, warehouse_id) {
+            const { error } = await client.from('staff').update({ warehouse_id: warehouse_id || null }).eq('id', id);
+            if (error) throw error;
+        },
     };
 
     /* ---- products -------------------------------------------- */
@@ -394,6 +399,107 @@
         },
     };
 
+    /* ---- warehouses (Phase 1) -------------------------------- */
+    const warehouses = {
+        async list() {
+            const { data, error } = await client.from('warehouses')
+                .select('*')
+                .order('name', { ascending: true });
+            if (error) throw error;
+            return data || [];
+        },
+        async listWithBranches() {
+            const [whResult, linksResult] = await Promise.all([
+                client.from('warehouses').select('*').order('name'),
+                client.from('branch_warehouses').select('warehouse_id, branch_id, is_default, branches(name)'),
+            ]);
+            if (whResult.error) throw whResult.error;
+            if (linksResult.error) throw linksResult.error;
+            const linksByWarehouse = new Map();
+            (linksResult.data || []).forEach((l) => {
+                const arr = linksByWarehouse.get(l.warehouse_id) || [];
+                arr.push({ branch_id: l.branch_id, branch_name: l.branches && l.branches.name, is_default: l.is_default });
+                linksByWarehouse.set(l.warehouse_id, arr);
+            });
+            return (whResult.data || []).map((w) => ({ ...w, branches: linksByWarehouse.get(w.id) || [] }));
+        },
+        async listForBranch(branchId) {
+            const { data, error } = await client.from('branch_warehouses')
+                .select('warehouse_id, is_default, warehouses(*)')
+                .eq('branch_id', branchId);
+            if (error) throw error;
+            return (data || []).map((row) => ({ ...row.warehouses, is_default: row.is_default }));
+        },
+        async add({ name, code, location, manager_staff_id, branch_links }) {
+            const { data: wh, error } = await client.from('warehouses')
+                .insert({ name, code, location: location || null, manager_staff_id: manager_staff_id || null })
+                .select().single();
+            if (error) throw error;
+            if (Array.isArray(branch_links) && branch_links.length) {
+                const rows = branch_links.map((l) => ({
+                    warehouse_id: wh.id,
+                    branch_id: l.branch_id,
+                    is_default: !!l.is_default,
+                }));
+                const { error: linkErr } = await client.from('branch_warehouses').insert(rows);
+                if (linkErr) throw linkErr;
+            }
+            return wh;
+        },
+        async update(id, { name, code, location, manager_staff_id }) {
+            const patch = {};
+            if (name !== undefined) patch.name = name;
+            if (code !== undefined) patch.code = code;
+            if (location !== undefined) patch.location = location || null;
+            if (manager_staff_id !== undefined) patch.manager_staff_id = manager_staff_id || null;
+            const { error } = await client.from('warehouses').update(patch).eq('id', id);
+            if (error) throw error;
+        },
+        async remove(id) {
+            const { error } = await client.from('warehouses').delete().eq('id', id);
+            if (error) throw error;
+        },
+        async replaceBranchLinks(warehouseId, branchLinks) {
+            // Wipe & recreate for simplicity. branchLinks: [{ branch_id, is_default }]
+            const { error: delErr } = await client.from('branch_warehouses')
+                .delete().eq('warehouse_id', warehouseId);
+            if (delErr) throw delErr;
+            if (!branchLinks || !branchLinks.length) return;
+            const rows = branchLinks.map((l) => ({
+                warehouse_id: warehouseId,
+                branch_id: l.branch_id,
+                is_default: !!l.is_default,
+            }));
+            const { error: insErr } = await client.from('branch_warehouses').insert(rows);
+            if (insErr) throw insErr;
+        },
+    };
+
+    /* ---- roles + session (Phase 1) --------------------------- */
+    const roles = {
+        async assign(staffId, newRole, changedBy) {
+            const { error } = await client.rpc('assign_role', {
+                p_staff_id: staffId,
+                p_new_role: newRole,
+                p_changed_by: changedBy,
+            });
+            if (error) throw error;
+        },
+        async checkSession(staffId, sessionVersion) {
+            const { data, error } = await client.rpc('check_session', {
+                p_staff_id: staffId,
+                p_session_version: sessionVersion,
+            });
+            if (error) throw error;
+            return data === true;
+        },
+        async generateStaffCode(branchId) {
+            const { data, error } = await client.rpc('generate_staff_code', { p_branch_id: branchId });
+            if (error) throw error;
+            return data;
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -411,5 +517,7 @@
         announcements,
         categories,
         materials,
+        warehouses,
+        roles,
     });
 })();
