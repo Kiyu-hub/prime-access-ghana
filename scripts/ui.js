@@ -147,6 +147,13 @@ function showUpdateDialog(reg) {
     if (document.getElementById('chUpdateModal')) return;
     const snoozeUntil = Number(localStorage.getItem(UPDATE_SNOOZE_KEY) || 0);
     if (Date.now() < snoozeUntil) return;
+    // Just finished an update? Suppress the dialog for 60 seconds so any
+    // lingering "waiting" SW state from the previous instance can't loop us.
+    if (sessionStorage.getItem('ch_just_updated') === '1') {
+        sessionStorage.removeItem('ch_just_updated');
+        localStorage.setItem(UPDATE_SNOOZE_KEY, String(Date.now() + 60 * 1000));
+        return;
+    }
 
     // Fetch the new SW's version so we can show it in the dialog
     let newVersion = '';
@@ -236,8 +243,21 @@ function showUpdateDialog(reg) {
                 });
             }
         } catch (_) { /* swallow — never block the update */ }
+
+        // CRITICAL: don't reload until the new SW has actually taken over.
+        // Reloading too early leaves the OLD SW in control and the new one
+        // still waiting → dialog reappears in a loop on the next load.
+        sessionStorage.setItem('ch_just_updated', '1');
+        let reloaded = false;
+        const reload = () => {
+            if (reloaded) return;
+            reloaded = true;
+            location.reload();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', reload, { once: true });
         try { if (reg && reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' }); } catch (_) {}
-        setTimeout(() => location.reload(), 200);
+        // Hard fallback in case the controllerchange event never fires (rare)
+        setTimeout(reload, 5000);
     });
     // ESC dismisses (treats as "later") but never auto-applies
     document.addEventListener('keydown', function onKey(e) {
