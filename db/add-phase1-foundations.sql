@@ -89,13 +89,14 @@ create policy "bw_read"  on public.branch_warehouses for select using (true);
 create policy "bw_write" on public.branch_warehouses for all using (true) with check (true);
 
 -- 16) Update the staff_view so client sees normalized role ----
-create or replace view public.staff_view as
-select s.id, s.email, s.name, s.role, s.branch_id, s.warehouse_id, s.staff_code, s.is_admin, s.session_version, s.created_at, b.name as branch_name, w.name as warehouse_name
-from public.staff s
-left join public.branches b on b.id = s.branch_id
-left join public.warehouses w on w.id = s.warehouse_id;
+-- IMPORTANT: column order changed compared to the original view,
+-- so CREATE OR REPLACE VIEW is not allowed. DROP first.
+drop view if exists public.staff_view cascade;
+create view public.staff_view as select s.id, s.email, s.name, s.role, s.branch_id, s.is_admin, s.created_at, b.name as branch_name, s.warehouse_id, s.staff_code, s.session_version, w.name as warehouse_name from public.staff s left join public.branches b on b.id = s.branch_id left join public.warehouses w on w.id = s.warehouse_id;
 grant select on public.staff_view to anon, authenticated;
 
 -- 17) Update verify_login to return new fields ----------------
-create or replace function public.verify_login(p_email text, p_password text) returns table (id uuid, email text, name text, role text, branch_id uuid, branch_name text, is_admin boolean, staff_code text, session_version int, warehouse_id uuid, warehouse_name text) language plpgsql security definer set search_path = public, extensions as $$ begin return query select s.id, s.email, s.name, s.role, s.branch_id, b.name as branch_name, s.is_admin, s.staff_code, s.session_version, s.warehouse_id, w.name as warehouse_name from public.staff s left join public.branches b on b.id = s.branch_id left join public.warehouses w on w.id = s.warehouse_id where lower(s.email) = lower(p_email) and s.password_hash = extensions.crypt(p_password, s.password_hash); end; $$;
+-- Return type changed -> must drop function first.
+drop function if exists public.verify_login(text, text);
+create function public.verify_login(p_email text, p_password text) returns table (id uuid, email text, name text, role text, branch_id uuid, branch_name text, is_admin boolean, staff_code text, session_version int, warehouse_id uuid, warehouse_name text) language plpgsql security definer set search_path = public, extensions as $$ begin return query select s.id, s.email, s.name, s.role, s.branch_id, b.name as branch_name, s.is_admin, s.staff_code, s.session_version, s.warehouse_id, w.name as warehouse_name from public.staff s left join public.branches b on b.id = s.branch_id left join public.warehouses w on w.id = s.warehouse_id where lower(s.email) = lower(p_email) and s.password_hash = extensions.crypt(p_password, s.password_hash); end; $$;
 grant execute on function public.verify_login(text, text) to anon, authenticated;
