@@ -291,6 +291,9 @@
         if (view === 'warehouses') loadWarehouses();
         if (view === 'payment-accounts') loadPaymentAccounts();
         if (view === 'product-transfers') loadProductTransfers();
+        if (view === 'new-sale') initNewSale();
+        if (view === 'purchases') loadPurchases();
+        if (view === 'verify-invoice') initVerifyInvoice();
     }
 
     /* ---------- logout ---------- */
@@ -4379,12 +4382,12 @@
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
     const VIEWS_BY_ROLE = {
-        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers'],
+        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice'],
         // Branch Manager: normal privileges + warehouse VIEW (read-only,
         // scoped to their branch). No add/edit/delete — that stays admin.
-        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','product-transfers'],
-        warehouse_manager: ['products','messages','announcements','product-transfers'],
-        staff:             ['products','showroom','reports','messages','announcements','product-transfers'],
+        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','product-transfers','new-sale','purchases'],
+        warehouse_manager: ['products','messages','announcements','product-transfers','verify-invoice'],
+        staff:             ['products','showroom','reports','messages','announcements','product-transfers','new-sale'],
     };
 
     function currentRole() {
@@ -4772,6 +4775,564 @@
             });
         } catch (_) { /* table missing — ignore */ }
     }
+
+    /* ============================================================
+       PHASE 3 — Customer orders / Invoice / Verification
+       ============================================================ */
+
+    let saleLineSeq = 0;
+    let saleAccountsCache = [];
+
+    function fmtMoney(n) {
+        return CURRENCY + ' ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    // ---- New Sale view ------------------------------------------
+    function initNewSale() {
+        // Reset the form
+        const form = document.getElementById('newSaleForm');
+        if (!form) return;
+        if (!session.branch_id && !session.is_admin) {
+            toast('You must be assigned to a branch to record sales.', 'error');
+            return;
+        }
+        form.reset();
+        // Clear lines + add a first one
+        const linesHost = $('#saleLines');
+        linesHost.innerHTML = '';
+        saleLineSeq = 0;
+        addSaleLine();
+        saleRecomputeTotal();
+        // Pre-fill staff code
+        if (session.staff_code) {
+            $('#saleStaffCode').value = session.staff_code;
+            $('#saleStaffName').textContent = session.name || '';
+            $('#saleStaffName').classList.add('is-ok');
+            $('#saleStaffName').classList.remove('is-error');
+        }
+        // Load payment accounts for this branch (for the Account dropdown)
+        loadSaleAccounts();
+    }
+
+    async function loadSaleAccounts() {
+        const sel = $('#salePaymentAccount');
+        if (!sel || !window.CH || !window.CH.paymentAccounts) return;
+        try {
+            saleAccountsCache = await window.CH.paymentAccounts.listForBranch(session.branch_id);
+            updateSaleAccountDropdown();
+        } catch (_) {
+            saleAccountsCache = [];
+        }
+    }
+
+    function updateSaleAccountDropdown() {
+        const method = $('#salePaymentMethod').value;
+        const wrap = $('#salePaymentAccountField');
+        const sel = $('#salePaymentAccount');
+        if (!method || method === 'cash') {
+            if (wrap) wrap.style.display = 'none';
+            if (sel) sel.required = false;
+            return;
+        }
+        const filtered = saleAccountsCache.filter((a) => a.method === method);
+        if (filtered.length === 0) {
+            sel.innerHTML = '<option value="">No accounts available — ask Director</option>';
+            sel.disabled = true;
+        } else {
+            sel.innerHTML = ['<option value="" disabled selected>Pick the account customer paid to</option>']
+                .concat(filtered.map((a) => `<option value="${a.id}">${escapeHtml(a.provider)} · ${escapeHtml(a.account_number)} · ${escapeHtml(a.account_name)}</option>`))
+                .join('');
+            sel.disabled = false;
+            sel.required = true;
+        }
+        wrap.style.display = '';
+    }
+
+    function addSaleLine() {
+        const linesHost = $('#saleLines');
+        const lineId = 'saleLine-' + (++saleLineSeq);
+        const lineEl = document.createElement('div');
+        lineEl.className = 'sale-line';
+        lineEl.dataset.lineId = lineId;
+        lineEl.innerHTML = `
+            <div>
+                <label>Product<span class="req">*</span></label>
+                <select data-sale-product required>
+                    <option value="" disabled selected>Pick product</option>
+                </select>
+            </div>
+            <div>
+                <label>Qty<span class="req">*</span></label>
+                <input type="number" data-sale-qty min="1" value="1" required />
+            </div>
+            <div>
+                <label>Unit price (GHS)</label>
+                <input type="number" data-sale-price min="0" step="0.01" />
+            </div>
+            <div>
+                <label>Source</label>
+                <select data-sale-source>
+                    <option value="warehouse">Warehouse</option>
+                    <option value="showroom">Showroom</option>
+                </select>
+            </div>
+            <button type="button" class="sale-line__del" aria-label="Remove line">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        `;
+        linesHost.appendChild(lineEl);
+        // Populate product dropdown with branch's products
+        const sel = lineEl.querySelector('[data-sale-product]');
+        const branchProducts = products.filter((p) => !p.is_draft && (session.is_admin || p.branch_id === session.branch_id));
+        sel.innerHTML = ['<option value="" disabled selected>Pick product</option>']
+            .concat(branchProducts.map((p) => `<option value="${p.id}" data-price="${p.price}" data-stock="${p.stock}" data-wh="${p.warehouse_id || ''}" data-item-no="${escapeAttr(p.item_no || '')}" data-desc="${escapeAttr(p.description || '')}">${escapeHtml((p.item_no ? p.item_no + ' · ' : '') + (p.description || ''))} (${p.stock} in stock)</option>`))
+            .join('');
+        // Auto-fill price when product changes
+        sel.addEventListener('change', () => {
+            const opt = sel.selectedOptions[0];
+            const priceInp = lineEl.querySelector('[data-sale-price]');
+            priceInp.value = opt && opt.dataset.price ? Number(opt.dataset.price).toFixed(2) : '';
+            saleRecomputeTotal();
+        });
+        lineEl.querySelector('[data-sale-qty]').addEventListener('input', saleRecomputeTotal);
+        lineEl.querySelector('[data-sale-price]').addEventListener('input', saleRecomputeTotal);
+        // Delete button (only if more than one line)
+        lineEl.querySelector('.sale-line__del').addEventListener('click', () => {
+            if (linesHost.children.length === 1) {
+                toast('Order needs at least one item.', 'error');
+                return;
+            }
+            lineEl.remove();
+            saleRecomputeTotal();
+        });
+    }
+
+    function saleRecomputeTotal() {
+        let total = 0;
+        $$('#saleLines .sale-line').forEach((line) => {
+            const qty = Number(line.querySelector('[data-sale-qty]').value) || 0;
+            const price = Number(line.querySelector('[data-sale-price]').value) || 0;
+            total += qty * price;
+        });
+        $('#saleTotalValue').textContent = fmtMoney(total);
+    }
+
+    // Wire static handlers once
+    const saleMethodEl = document.getElementById('salePaymentMethod');
+    if (saleMethodEl) saleMethodEl.addEventListener('change', updateSaleAccountDropdown);
+    const saleAddBtn = document.getElementById('saleAddLineBtn');
+    if (saleAddBtn) saleAddBtn.addEventListener('click', () => { addSaleLine(); saleRecomputeTotal(); });
+    const saleStaffEl = document.getElementById('saleStaffCode');
+    if (saleStaffEl) {
+        let debounce;
+        saleStaffEl.addEventListener('input', () => {
+            const code = (saleStaffEl.value || '').trim().toUpperCase();
+            const out = $('#saleStaffName');
+            clearTimeout(debounce);
+            if (!code) { out.textContent = 'Type your code to confirm your name'; out.classList.remove('is-ok','is-error'); return; }
+            debounce = setTimeout(() => {
+                const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+                if (match) { out.textContent = match.name + (match.role ? ' · ' + match.role.replace('_',' ') : ''); out.classList.add('is-ok'); out.classList.remove('is-error'); }
+                else { out.textContent = 'No staff with that code'; out.classList.add('is-error'); out.classList.remove('is-ok'); }
+            }, 250);
+        });
+    }
+
+    // Submit handler
+    const newSaleForm = document.getElementById('newSaleForm');
+    if (newSaleForm) newSaleForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!window.CH || !window.CH.customerOrders) {
+            toast('Sales not enabled yet. Ask the Director to run the latest setup.', 'error');
+            return;
+        }
+        const submitBtn = $('#saleSubmitBtn');
+        const clientName = $('#saleClientName').value.trim();
+        const clientPhone = $('#saleClientPhone').value.trim();
+        const clientEmail = $('#saleClientEmail').value.trim();
+        const method = $('#salePaymentMethod').value;
+        const accountId = ($('#salePaymentAccount').value || null);
+        const paymentConfirmed = $('#salePaymentConfirmed').checked;
+        const note = $('#saleNote').value.trim();
+        const code = ($('#saleStaffCode').value || '').trim().toUpperCase();
+        // Build items
+        const items = [];
+        let hasInvalid = false;
+        $$('#saleLines .sale-line').forEach((line) => {
+            const sel = line.querySelector('[data-sale-product]');
+            const opt = sel.selectedOptions[0];
+            const product_id = sel.value;
+            const qty = parseInt(line.querySelector('[data-sale-qty]').value, 10) || 0;
+            const unit_price = Number(line.querySelector('[data-sale-price]').value) || 0;
+            const source = line.querySelector('[data-sale-source]').value;
+            const source_warehouse_id = opt && opt.dataset.wh ? opt.dataset.wh : null;
+            const item_no = opt ? opt.dataset.itemNo : '';
+            const description = opt ? opt.dataset.desc : '';
+            if (!product_id || qty <= 0) hasInvalid = true;
+            items.push({ product_id, item_no, description, qty, unit_price, source, source_warehouse_id });
+        });
+        // Validation
+        if (!clientName) { toast('Customer name is required.', 'error'); return; }
+        if (items.length === 0 || hasInvalid) { toast('Add at least one item with quantity ≥ 1.', 'error'); return; }
+        if (!method) { toast('Pick a payment method.', 'error'); return; }
+        if (method !== 'cash' && !accountId) { toast('Pick which account the customer paid to.', 'error'); return; }
+        if (!code) { toast('Enter your staff ID.', 'error'); return; }
+        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+        if (!match || match.id !== session.id) { toast('Staff ID must match your signed-in user.', 'error'); return; }
+        try {
+            submitBtn.disabled = true;
+            submitBtn.querySelector('span').textContent = 'Generating…';
+            const res = await window.CH.customerOrders.create({
+                branch_id: session.branch_id || null,
+                warehouse_id: session.is_admin ? null : (warehousesCache.find((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id && b.is_default)) || {}).id || null,
+                client_name: clientName,
+                client_phone: clientPhone,
+                client_email: clientEmail,
+                initiated_by: session.id,
+                initiated_by_code: code,
+                payment_method: method,
+                payment_provider: null,
+                payment_account_id: accountId,
+                payment_confirmed: paymentConfirmed,
+                note,
+                items,
+            });
+            try {
+                await window.CH.logs.record({
+                    action: 'customer_order_created',
+                    branch_id: session.branch_id,
+                    branch_name: session.branch_name,
+                    staff_id: session.id,
+                    staff_name: session.name,
+                    note: res.code + ' · ' + clientName + ' · ' + fmtMoney(items.reduce((s, it) => s + it.qty * it.unit_price, 0)),
+                });
+            } catch (_) {}
+            toast('Sale recorded · ' + res.code, 'success');
+            // Open invoice modal
+            await openInvoiceModal(res.id);
+        } catch (err) {
+            console.error(err);
+            toast('Could not create sale: ' + (err.message || 'unknown error'), 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.querySelector('span').textContent = 'Generate invoice';
+        }
+    });
+
+    // ---- Invoice modal ------------------------------------------
+    async function openInvoiceModal(orderId) {
+        const full = await window.CH.customerOrders.get(orderId);
+        const branch = full.branch || {};
+        const pa = full.payment_account || {};
+        const itemsHtml = (full.items || []).map((it) => `
+            <tr>
+                <td><strong>${escapeHtml(it.item_no_snap || '—')}</strong><br><small>${escapeHtml(it.description_snap || '')}</small></td>
+                <td>${it.qty}</td>
+                <td>${fmtMoney(it.unit_price)}</td>
+                <td><b>${fmtMoney(it.subtotal)}</b></td>
+            </tr>
+        `).join('');
+        const created = new Date(full.created_at);
+        $('#invoiceDoc').innerHTML = `
+            <div class="invoice-doc" id="invoiceDocContent">
+                <div class="invoice-doc__head">
+                    <div class="invoice-doc__brand">
+                        <img src="assets/icon-180.png" alt="" />
+                        <strong>CLASIKAL HOMES</strong>
+                        <small>we listen, we create, you enjoy</small>
+                    </div>
+                    <div class="invoice-doc__meta">
+                        <b>${escapeHtml(full.invoice_code)}</b><br>
+                        Order: ${escapeHtml(full.code)}<br>
+                        Date: ${created.toLocaleDateString()}<br>
+                        Time: ${created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<br>
+                        ${branch.name ? 'Branch: ' + escapeHtml(branch.name) + '<br>' : ''}
+                        ${branch.location ? 'Location: ' + escapeHtml(branch.location) : ''}
+                    </div>
+                </div>
+
+                <h3>Customer</h3>
+                <div style="font-size:0.92rem;line-height:1.5;">
+                    <b>${escapeHtml(full.client_name || '')}</b><br>
+                    ${full.client_phone ? '📞 ' + escapeHtml(full.client_phone) + '<br>' : ''}
+                    ${full.client_email ? '✉ ' + escapeHtml(full.client_email) : ''}
+                </div>
+
+                <h3>Items</h3>
+                <table>
+                    <thead>
+                        <tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr>
+                    </thead>
+                    <tbody>${itemsHtml}</tbody>
+                </table>
+
+                <div class="invoice-doc__total">Total: ${fmtMoney(full.total)}</div>
+
+                <h3>Payment</h3>
+                <div style="font-size:0.92rem;line-height:1.6;">
+                    Method: <b>${escapeHtml((full.payment_method || '').toUpperCase())}</b>
+                    ${pa.provider ? '<br>Account: <b>' + escapeHtml(pa.provider) + ' · ' + escapeHtml(pa.account_number || '') + '</b>' : ''}
+                    <br>Status: ${full.payment_confirmed ? '<b style="color:#15803d;">Paid</b>' : '<b style="color:#92400E;">Pending confirmation</b>'}
+                </div>
+
+                <div class="invoice-doc__code">
+                    <span>Invoice code · single use</span>
+                    <strong>${escapeHtml(full.invoice_code)}</strong>
+                </div>
+
+                <div class="invoice-doc__footer">
+                    Hand this slip to the warehouse manager. They will enter the code above to dispatch your goods.<br>
+                    <i>we listen, we create, you enjoy</i><br>
+                    East Legon Hills · Accra · 054 619 1433 / 050 051 5050 · clasikalhomesgh@gmail.com
+                </div>
+            </div>
+        `;
+        $('#invoiceModalTitle').textContent = 'Invoice · ' + full.code;
+        $('#invoiceModal').classList.add('is-open');
+    }
+
+    const invoicePrintBtn = document.getElementById('invoicePrintBtn');
+    if (invoicePrintBtn) invoicePrintBtn.addEventListener('click', () => window.print());
+
+    // ---- Purchases list -----------------------------------------
+    let purchasesCache = [];
+
+    async function loadPurchases() {
+        const body = $('#purchasesBody');
+        if (!body) return;
+        if (!window.CH || !window.CH.customerOrders) {
+            body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--c-ink-5);">Sales not enabled yet. Ask the Director to run the latest setup.</td></tr>';
+            return;
+        }
+        try {
+            const role = currentRole();
+            const branchScope = getManagedBranchIds();
+            const opts = { limit: 500 };
+            if (role !== 'admin' && branchScope !== 'ALL' && branchScope.length === 1) {
+                opts.branchId = branchScope[0];
+            }
+            const all = await window.CH.customerOrders.list(opts);
+            // Multi-branch managers: filter client-side
+            if (role !== 'admin' && branchScope !== 'ALL') {
+                const allowed = new Set(branchScope);
+                purchasesCache = all.filter((o) => allowed.has(o.branch_id));
+            } else {
+                purchasesCache = all;
+            }
+            renderPurchases();
+            renderSalesSummary();
+        } catch (err) {
+            console.error(err);
+            if (isMissingTableError(err)) {
+                body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--c-ink-5);">Sales not enabled yet. Ask the Director to run the latest setup.</td></tr>';
+            } else {
+                toast('Could not load sales: ' + (err.message || 'unknown'), 'error');
+            }
+        }
+    }
+
+    function renderPurchases() {
+        const body = $('#purchasesBody');
+        const empty = $('#purchasesEmpty');
+        if (purchasesCache.length === 0) {
+            body.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+        body.innerHTML = purchasesCache.map((o) => {
+            const statusPill = o.status === 'fulfilled' ? 'pill--pt-received'
+                : o.status === 'cancelled' ? 'pill--pt-cancelled'
+                : 'pill--pt-pending';
+            const statusLabel = o.status === 'fulfilled' ? 'Fulfilled' : o.status === 'cancelled' ? 'Cancelled' : 'Pending';
+            const initiator = o.initiator || {};
+            return `<tr data-order-id="${o.id}" style="cursor:pointer;">
+                <td><span class="itemno">${escapeHtml(o.code)}</span></td>
+                <td><strong>${escapeHtml(o.client_name || '—')}</strong>${o.client_phone ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(o.client_phone) + '</small>' : ''}</td>
+                <td>—</td>
+                <td><strong>${fmtMoney(o.total)}</strong></td>
+                <td>${escapeHtml((o.payment_method || '').toUpperCase())}${o.payment_provider ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(o.payment_provider) + '</small>' : ''}</td>
+                <td><span class="pill ${statusPill}">${statusLabel}</span></td>
+                <td>${relTime(o.created_at)}<br><small style="color:var(--c-ink-5);">by ${escapeHtml(initiator.staff_code || '—')}</small></td>
+                <td style="text-align:right;">
+                    <button class="icon-btn" data-reprint="${o.id}" title="Reprint invoice"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>
+                </td>
+            </tr>`;
+        }).join('');
+    }
+
+    function renderSalesSummary() {
+        const host = $('#salesSummary');
+        if (!host) return;
+        const now = Date.now();
+        const dayMs = 24 * 60 * 60 * 1000;
+        const fulfilled = purchasesCache.filter((o) => o.status === 'fulfilled');
+        const today = fulfilled.filter((o) => (now - new Date(o.created_at).getTime()) < dayMs);
+        const week = fulfilled.filter((o) => (now - new Date(o.created_at).getTime()) < 7 * dayMs);
+        const month = fulfilled.filter((o) => (now - new Date(o.created_at).getTime()) < 30 * dayMs);
+        const sum = (arr) => arr.reduce((s, o) => s + Number(o.total || 0), 0);
+        const pending = purchasesCache.filter((o) => o.status === 'pending').length;
+        host.innerHTML = `
+            <div class="report-card report-card--accent"><div class="report-card__label">Today</div><div class="report-card__value">${fmtMoney(sum(today))}</div><div class="report-card__hint">${today.length} sale${today.length === 1 ? '' : 's'}</div></div>
+            <div class="report-card"><div class="report-card__label">This week</div><div class="report-card__value">${fmtMoney(sum(week))}</div><div class="report-card__hint">${week.length} sale${week.length === 1 ? '' : 's'}</div></div>
+            <div class="report-card report-card--accent"><div class="report-card__label">This month</div><div class="report-card__value">${fmtMoney(sum(month))}</div><div class="report-card__hint">${month.length} sale${month.length === 1 ? '' : 's'}</div></div>
+            <div class="report-card"><div class="report-card__label">Total recorded</div><div class="report-card__value">${fmtMoney(sum(fulfilled))}</div><div class="report-card__hint">${fulfilled.length} fulfilled · ${pending} pending</div></div>
+        `;
+    }
+
+    const purchasesBodyEl = document.getElementById('purchasesBody');
+    if (purchasesBodyEl) purchasesBodyEl.addEventListener('click', (e) => {
+        const reBtn = e.target.closest('[data-reprint]');
+        if (reBtn) { openInvoiceModal(reBtn.dataset.reprint); return; }
+        const row = e.target.closest('tr[data-order-id]');
+        if (row) openInvoiceModal(row.dataset.orderId);
+    });
+
+    // ---- Verify Invoice view ------------------------------------
+    function initVerifyInvoice() {
+        $('#verifyInvoiceCode').value = '';
+        $('#verifyValidatorCode').value = session.staff_code || '';
+        $('#verifyValidatorName').textContent = session.staff_code ? (session.name || '') : 'Type your code to confirm your name';
+        $('#verifyValidatorName').className = 'pt-staff-resolve' + (session.staff_code ? ' is-ok' : '');
+        $('#verifyResult').innerHTML = '';
+    }
+
+    const verifyValidatorCodeEl = document.getElementById('verifyValidatorCode');
+    if (verifyValidatorCodeEl) {
+        let debounce;
+        verifyValidatorCodeEl.addEventListener('input', () => {
+            const code = (verifyValidatorCodeEl.value || '').trim().toUpperCase();
+            const out = $('#verifyValidatorName');
+            clearTimeout(debounce);
+            if (!code) { out.textContent = 'Type your code to confirm your name'; out.classList.remove('is-ok','is-error'); return; }
+            debounce = setTimeout(() => {
+                const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+                if (match) { out.textContent = match.name; out.classList.add('is-ok'); out.classList.remove('is-error'); }
+                else { out.textContent = 'No staff with that code'; out.classList.add('is-error'); out.classList.remove('is-ok'); }
+            }, 250);
+        });
+    }
+
+    const verifyBtn = document.getElementById('verifyInvoiceBtn');
+    if (verifyBtn) verifyBtn.addEventListener('click', async () => {
+        const code = ($('#verifyInvoiceCode').value || '').trim().toUpperCase();
+        const validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
+        const resultHost = $('#verifyResult');
+        if (!code) { toast('Enter an invoice code.', 'error'); return; }
+        if (!validatorCode) { toast('Enter your staff ID.', 'error'); return; }
+        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === validatorCode);
+        if (!match || match.id !== session.id) {
+            toast('Staff ID must match your signed-in user.', 'error');
+            return;
+        }
+        const warehouseId = session.warehouse_id;
+        if (!warehouseId && !session.is_admin) { toast('You are not assigned to a warehouse.', 'error'); return; }
+        try {
+            verifyBtn.disabled = true;
+            verifyBtn.textContent = 'Checking…';
+            const res = await window.CH.customerOrders.validateInvoice(code, warehouseId, session.id, validatorCode);
+            try {
+                await window.CH.logs.record({
+                    action: res.result === 'pass' ? 'customer_order_validated_pass' : 'customer_order_validated_fail',
+                    staff_id: session.id, staff_name: session.name,
+                    note: code + ' · ' + res.result + ' · ' + (res.detail || ''),
+                });
+            } catch (_) {}
+            renderVerifyResult(res, code);
+        } catch (err) {
+            toast('Validation failed: ' + (err.message || 'unknown'), 'error');
+        } finally {
+            verifyBtn.disabled = false;
+            verifyBtn.textContent = 'Validate';
+        }
+    });
+
+    async function renderVerifyResult(res, code) {
+        const host = $('#verifyResult');
+        if (!host) return;
+        if (res.result === 'pass' && res.order_id) {
+            // Fetch full order details
+            const full = await window.CH.customerOrders.get(res.order_id);
+            const itemsHtml = (full.items || []).map((it) => `
+                <div class="verify-result__row"><span>${escapeHtml(it.item_no_snap || '—')} · ${escapeHtml(it.description_snap || '')}</span><b>×${it.qty}</b></div>
+            `).join('');
+            host.innerHTML = `
+                <div class="verify-result verify-result--pass">
+                    <div class="verify-result__head">
+                        <div class="verify-result__icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                        <div>
+                            <h3 class="verify-result__title">PASS · Ready to dispatch</h3>
+                            <p class="verify-result__subtitle">Verify the items below match what is being collected, then confirm.</p>
+                        </div>
+                    </div>
+                    <div class="verify-result__rows">
+                        <div class="verify-result__row"><span>Invoice code</span><b>${escapeHtml(full.invoice_code)}</b></div>
+                        <div class="verify-result__row"><span>Order code</span><b>${escapeHtml(full.code)}</b></div>
+                        <div class="verify-result__row"><span>Customer</span><b>${escapeHtml(full.client_name)}</b></div>
+                        <div class="verify-result__row"><span>Total</span><b>${fmtMoney(full.total)}</b></div>
+                        <div class="verify-result__row"><span>Payment</span><b>${escapeHtml((full.payment_method || '').toUpperCase())}${full.payment_confirmed ? ' · ✓ confirmed' : ' · ⚠ unconfirmed'}</b></div>
+                        <div class="verify-result__row"><span>Initiated by</span><b>${escapeHtml((full.initiator && full.initiator.staff_code) || '—')}</b></div>
+                    </div>
+                    <h3 style="font-size:0.86rem;margin-top:14px;margin-bottom:8px;color:var(--c-ink-3);">Items to dispatch</h3>
+                    <div class="verify-result__rows">${itemsHtml}</div>
+                    <button type="button" class="btn btn--success" data-fulfill="${full.id}" style="width:100%;margin-top:14px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span>Confirm &amp; dispatch · single use</span>
+                    </button>
+                </div>
+            `;
+            host.querySelector('[data-fulfill]').addEventListener('click', () => fulfillOrder(full.id, code));
+        } else {
+            const titleMap = {
+                fail_not_found: 'INVALID · Code not found',
+                fail_already_used: 'BLOCKED · Already used',
+                fail_wrong_warehouse: 'WRONG WAREHOUSE',
+                fail_cancelled: 'CANCELLED',
+            };
+            host.innerHTML = `
+                <div class="verify-result verify-result--fail">
+                    <div class="verify-result__head">
+                        <div class="verify-result__icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+                        <div>
+                            <h3 class="verify-result__title">${escapeHtml(titleMap[res.result] || 'FAIL')}</h3>
+                            <p class="verify-result__subtitle">${escapeHtml(res.detail || '')}</p>
+                        </div>
+                    </div>
+                    ${res.validated_by_code ? `<div class="verify-result__rows">
+                        <div class="verify-result__row"><span>Originally used by</span><b>${escapeHtml(res.validated_by_code)}</b></div>
+                        ${res.validated_at ? `<div class="verify-result__row"><span>Used at</span><b>${new Date(res.validated_at).toLocaleString()}</b></div>` : ''}
+                    </div>` : ''}
+                    <div style="font-size:0.84rem;color:var(--c-ink-4);margin-top:14px;">Invoice <code>${escapeHtml(code)}</code> cannot be used again.</div>
+                </div>
+            `;
+        }
+    }
+
+    async function fulfillOrder(orderId, code) {
+        if (!confirm('Confirm dispatch? Stock will be deducted and this invoice cannot be reused.')) return;
+        const validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
+        try {
+            await window.CH.customerOrders.fulfill(orderId, session.id, validatorCode);
+            try {
+                await window.CH.logs.record({
+                    action: 'customer_order_fulfilled',
+                    staff_id: session.id, staff_name: session.name,
+                    note: code + ' · dispatched by ' + validatorCode,
+                });
+            } catch (_) {}
+            toast('Dispatched. Stock decremented.', 'success');
+            // Refresh the verify view
+            renderVerifyResult({ result: 'fail_already_used', detail: 'You just fulfilled this order. Stock has been moved.', validated_by_code: validatorCode, validated_at: new Date().toISOString() }, code);
+            // Refresh products if visible
+            if (currentView === 'products') await loadProducts();
+        } catch (err) {
+            toast('Could not dispatch: ' + (err.message || 'unknown'), 'error');
+        }
+    }
+
+    // Click-outside close for invoice modal
+    const invoiceModalEl = document.getElementById('invoiceModal');
+    if (invoiceModalEl) invoiceModalEl.addEventListener('click', (e) => { if (e.target === invoiceModalEl) invoiceModalEl.classList.remove('is-open'); });
 
     /* ---------- initial load ---------- */
     (async function init() {

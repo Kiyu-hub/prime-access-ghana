@@ -675,6 +675,94 @@
         },
     };
 
+    /* ---- customer orders (Phase 3) --------------------------- */
+    const customerOrders = {
+        // List orders with optional filters; joins minimal nested data
+        async list(opts = {}) {
+            let q = client.from('customer_orders')
+                .select('*, branch:branch_id(name), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code)')
+                .order('created_at', { ascending: false });
+            if (opts.branchId)       q = q.eq('branch_id', opts.branchId);
+            if (opts.warehouseId)    q = q.eq('warehouse_id', opts.warehouseId);
+            if (opts.status)         q = q.eq('status', opts.status);
+            if (opts.limit)          q = q.limit(opts.limit);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        },
+        async get(id) {
+            const [orderResult, itemsResult] = await Promise.all([
+                client.from('customer_orders')
+                    .select('*, branch:branch_id(name,location), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code), payment_account:payment_account_id(provider,account_name,account_number,method)')
+                    .eq('id', id).single(),
+                client.from('customer_order_items').select('*').eq('order_id', id),
+            ]);
+            if (orderResult.error) throw orderResult.error;
+            if (itemsResult.error) throw itemsResult.error;
+            return { ...orderResult.data, items: itemsResult.data || [] };
+        },
+        async getByInvoiceCode(invoiceCode) {
+            const { data, error } = await client.from('customer_orders').select('id').eq('invoice_code', invoiceCode).maybeSingle();
+            if (error) throw error;
+            if (!data) return null;
+            return this.get(data.id);
+        },
+        // Create a new order. items: [{ product_id, item_no, description, qty, unit_price, source, source_warehouse_id }]
+        async create({ branch_id, warehouse_id, client_name, client_phone, client_email, initiated_by, initiated_by_code, payment_method, payment_provider, payment_account_id, payment_confirmed, note, items }) {
+            const { data, error } = await client.rpc('create_customer_order', {
+                p_branch_id: branch_id,
+                p_warehouse_id: warehouse_id || null,
+                p_client_name: client_name,
+                p_client_phone: client_phone || null,
+                p_client_email: client_email || null,
+                p_initiated_by: initiated_by,
+                p_initiated_by_code: initiated_by_code || null,
+                p_payment_method: payment_method,
+                p_payment_provider: payment_provider || null,
+                p_payment_account_id: payment_account_id || null,
+                p_payment_confirmed: !!payment_confirmed,
+                p_note: note || null,
+                p_items: items,
+            });
+            if (error) throw error;
+            // Returns an array with one row (id, code, invoice_code)
+            return Array.isArray(data) ? data[0] : data;
+        },
+        async validateInvoice(code, warehouseId, validatorId, validatorCode) {
+            const { data, error } = await client.rpc('validate_invoice_code', {
+                p_code: code,
+                p_warehouse_id: warehouseId,
+                p_validator_id: validatorId,
+                p_validator_code: validatorCode || null,
+            });
+            if (error) throw error;
+            return Array.isArray(data) ? data[0] : data;
+        },
+        async fulfill(orderId, validatorId, validatorCode) {
+            const { error } = await client.rpc('fulfill_customer_order', {
+                p_order_id: orderId,
+                p_validator_id: validatorId,
+                p_validator_code: validatorCode || null,
+            });
+            if (error) throw error;
+        },
+        async cancel(orderId, byStaffId, reason) {
+            const { error } = await client.rpc('cancel_customer_order', {
+                p_order_id: orderId,
+                p_by_staff_id: byStaffId,
+                p_reason: reason || null,
+            });
+            if (error) throw error;
+        },
+        subscribe(onChange) {
+            if (!client) return () => {};
+            const ch = client.channel('ch-customer-orders')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'customer_orders' }, onChange)
+                .subscribe();
+            return () => client.removeChannel(ch);
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -696,5 +784,6 @@
         roles,
         productTransfers,
         paymentAccounts,
+        customerOrders,
     });
 })();

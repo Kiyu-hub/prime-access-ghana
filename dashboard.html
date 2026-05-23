@@ -287,6 +287,20 @@
         body[data-role="staff"] .nav a[data-view="logs"],
         body[data-role="staff"] .nav a[data-view="drafts"] { display: none !important; }
 
+        /* ---- Phase 3 role gating: Sales / Purchases / Verify ---- */
+        /* Default: hide */
+        .nav .role-sales, .nav .role-purchases, .nav .role-verify { display: none; }
+        /* New Sale — staff, branch_manager, admin (NOT warehouse_manager) */
+        body[data-role="staff"] .nav .role-sales,
+        body[data-role="branch_manager"] .nav .role-sales,
+        body[data-role="admin"] .nav .role-sales { display: flex; }
+        /* Sales/Purchases list — branch_manager, admin */
+        body[data-role="branch_manager"] .nav .role-purchases,
+        body[data-role="admin"] .nav .role-purchases { display: flex; }
+        /* Verify Invoice — warehouse_manager, admin */
+        body[data-role="warehouse_manager"] .nav .role-verify,
+        body[data-role="admin"] .nav .role-verify { display: flex; }
+
         .sb-user {
             padding: 14px;
             background: rgba(255, 255, 255, 0.05);
@@ -1976,6 +1990,166 @@
         .pill--pt-received  { background: #DCFCE7; color: #166534; border-color: #BBF7D0; }
         .pill--pt-cancelled { background: #FEE2E2; color: #991B1B; border-color: #FECACA; }
 
+        /* ---------- SALES / INVOICES (Phase 3) ---------- */
+        .sale-form { display: flex; flex-direction: column; gap: 18px; }
+        .sale-section {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-lg);
+            padding: 18px 20px;
+        }
+        .sale-section h2 {
+            margin: 0 0 14px;
+            font-family: var(--f-display);
+            font-weight: 600;
+            font-size: 1.05rem;
+            color: var(--c-ink-2);
+        }
+        .sale-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 720px) { .sale-grid { grid-template-columns: 1fr; } }
+        .sale-grid .field--full { grid-column: 1 / -1; }
+
+        .sale-lines {
+            display: flex; flex-direction: column; gap: 10px;
+            margin-bottom: 12px;
+        }
+        .sale-line {
+            display: grid;
+            grid-template-columns: 2fr 80px 110px 110px 32px;
+            gap: 10px;
+            align-items: end;
+            padding: 12px;
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+        }
+        @media (max-width: 720px) {
+            .sale-line { grid-template-columns: 1fr 1fr; }
+            .sale-line > :nth-child(1) { grid-column: 1 / -1; }
+            .sale-line > :nth-child(5) { grid-column: 2 / 3; justify-self: end; }
+        }
+        .sale-line label {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--c-ink-4);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+        .sale-line input, .sale-line select {
+            width: 100%;
+            height: 36px;
+            padding: 0 10px;
+            border: 1px solid var(--c-line);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.86rem;
+            background: var(--c-white);
+        }
+        .sale-line__del {
+            background: transparent;
+            border: 0;
+            color: var(--c-ink-5);
+            width: 32px; height: 32px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: grid; place-items: center;
+            transition: all var(--t-fast);
+        }
+        .sale-line__del:hover { background: rgba(220, 38, 38, 0.1); color: var(--c-danger); }
+
+        .sale-total {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 14px 16px;
+            margin-top: 12px;
+            background: linear-gradient(135deg, #0B1F3F, #0369A1);
+            color: #fff;
+            border-radius: var(--r-md);
+        }
+        .sale-total span { font-size: 0.86rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.1em; }
+        .sale-total strong { font-family: var(--f-display); font-size: 1.5rem; font-weight: 600; }
+
+        .sale-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+        /* Verify Invoice */
+        .verify-card {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-lg);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            max-width: 560px;
+            margin-bottom: 20px;
+        }
+        .verify-row { display: flex; gap: 10px; margin-bottom: 14px; }
+        .verify-row input { flex: 1; height: 44px; padding: 0 14px; border: 1.5px solid var(--c-line); border-radius: var(--r-md); }
+        .verify-row .btn { height: 44px; padding: 0 20px; flex-shrink: 0; }
+
+        .verify-result {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-lg);
+            padding: 20px;
+            box-shadow: var(--shadow-sm);
+            max-width: 720px;
+        }
+        .verify-result--pass { border-left: 4px solid var(--c-success); }
+        .verify-result--fail { border-left: 4px solid var(--c-danger); }
+        .verify-result__head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .verify-result__icon {
+            width: 44px; height: 44px; border-radius: 50%;
+            display: grid; place-items: center; flex-shrink: 0;
+        }
+        .verify-result--pass .verify-result__icon { background: #DCFCE7; color: var(--c-success); }
+        .verify-result--fail .verify-result__icon { background: #FEE2E2; color: var(--c-danger); }
+        .verify-result__title { font-family: var(--f-display); font-weight: 600; font-size: 1.25rem; color: var(--c-ink-2); margin: 0; }
+        .verify-result__subtitle { font-size: 0.86rem; color: var(--c-ink-4); margin: 2px 0 0; }
+        .verify-result__rows { display: grid; gap: 8px; margin-bottom: 16px; }
+        .verify-result__row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--c-line); font-size: 0.88rem; }
+        .verify-result__row b { color: var(--c-ink-2); }
+
+        /* Invoice modal */
+        .invoice-modal-body {
+            max-height: calc(100dvh - 220px);
+            overflow-y: auto;
+        }
+        .invoice-doc {
+            background: #fff;
+            padding: 32px 36px;
+            color: #0F172A;
+            font-family: 'Helvetica', 'Arial', sans-serif;
+        }
+        .invoice-doc__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; border-bottom: 2px solid #0B1F3F; padding-bottom: 16px; margin-bottom: 20px; }
+        .invoice-doc__brand img { width: 60px; height: auto; }
+        .invoice-doc__brand strong { display: block; font-family: var(--f-display); font-weight: 700; font-size: 1.2rem; color: #0B1F3F; letter-spacing: 0.1em; margin-top: 6px; }
+        .invoice-doc__brand small { font-style: italic; color: var(--c-accent); font-size: 0.84rem; }
+        .invoice-doc__meta { text-align: right; font-size: 0.84rem; line-height: 1.5; }
+        .invoice-doc__meta b { font-family: var(--f-mono); color: #0B1F3F; }
+        .invoice-doc h3 { font-family: var(--f-display); font-weight: 600; margin: 20px 0 10px; color: #0B1F3F; font-size: 1.05rem; }
+        .invoice-doc table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+        .invoice-doc th { background: #F1F5F9; text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--c-line); }
+        .invoice-doc td { padding: 8px 10px; border-bottom: 1px solid var(--c-line); }
+        .invoice-doc__total { text-align: right; font-family: var(--f-display); font-size: 1.4rem; font-weight: 700; color: #0B1F3F; margin-top: 12px; }
+        .invoice-doc__code { text-align: center; padding: 16px; background: #F1F5F9; border: 2px dashed #0B1F3F; border-radius: 12px; margin: 20px 0; }
+        .invoice-doc__code span { display: block; font-size: 0.74rem; color: var(--c-ink-4); letter-spacing: 0.1em; text-transform: uppercase; }
+        .invoice-doc__code strong { display: block; font-family: var(--f-mono); font-size: 1.4rem; color: #0B1F3F; letter-spacing: 0.05em; margin-top: 4px; }
+        .invoice-doc__footer { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--c-line); font-size: 0.78rem; color: var(--c-ink-4); }
+        .invoice-doc__footer i { color: var(--c-accent); }
+
+        @media print {
+            body * { visibility: hidden !important; }
+            #invoiceDoc, #invoiceDoc * { visibility: visible !important; }
+            #invoiceDoc { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
+            .modal__head, .modal__foot, .modal__close { display: none !important; }
+        }
+
         /* ---------- DRAFTS bulk-action bar ---------- */
         .drafts-bulk-bar {
             display: flex;
@@ -2953,6 +3127,29 @@
                     <span>Product Transfers</span>
                     <span class="nav-badge" id="navTransfersBadge" hidden>0</span>
                 </a>
+                <a class="role-sales" data-view="new-sale">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+                        <line x1="3" y1="6" x2="21" y2="6"/>
+                        <path d="M16 10a4 4 0 01-8 0"/>
+                    </svg>
+                    <span>New Sale</span>
+                </a>
+                <a class="role-purchases" data-view="purchases">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 3h2l3 11h11l3-7H6"/>
+                        <circle cx="9" cy="20" r="1.5"/>
+                        <circle cx="18" cy="20" r="1.5"/>
+                    </svg>
+                    <span>Sales / Purchases</span>
+                </a>
+                <a class="role-verify" data-view="verify-invoice">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 11l3 3L22 4"/>
+                        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                    </svg>
+                    <span>Verify Invoice</span>
+                </a>
                 <a class="staff-only" data-view="announcements">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 11l18-8v18L3 13z"/>
@@ -3400,6 +3597,167 @@
             </section>
 
             <!-- ============================== -->
+            <!--          NEW SALE VIEW         -->
+            <!-- ============================== -->
+            <section class="view" id="view-new-sale">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>New Sale</h1>
+                        <p>Fill the form, generate the invoice, hand the printed copy to the warehouse.</p>
+                    </div>
+                </div>
+
+                <form id="newSaleForm" class="sale-form">
+                    <section class="sale-section">
+                        <h2>Customer</h2>
+                        <div class="sale-grid">
+                            <div>
+                                <label for="saleClientName">Full name<span class="req">*</span></label>
+                                <input type="text" id="saleClientName" placeholder="e.g. Ama Mensah" required />
+                            </div>
+                            <div>
+                                <label for="saleClientPhone">Phone</label>
+                                <input type="tel" id="saleClientPhone" placeholder="e.g. 024 123 4567" />
+                            </div>
+                            <div>
+                                <label for="saleClientEmail">Email <span class="hint">(optional)</span></label>
+                                <input type="email" id="saleClientEmail" placeholder="customer@example.com" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="sale-section">
+                        <h2>Items</h2>
+                        <div id="saleLines" class="sale-lines"></div>
+                        <button type="button" class="btn btn--ghost" id="saleAddLineBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                            <span>Add another item</span>
+                        </button>
+                        <div class="sale-total" id="saleTotalRow">
+                            <span>Total</span>
+                            <strong id="saleTotalValue">GHS 0.00</strong>
+                        </div>
+                    </section>
+
+                    <section class="sale-section">
+                        <h2>Payment</h2>
+                        <div class="sale-grid">
+                            <div>
+                                <label for="salePaymentMethod">Method<span class="req">*</span></label>
+                                <select id="salePaymentMethod" required>
+                                    <option value="" disabled selected>Select method</option>
+                                    <option value="cash">Cash</option>
+                                    <option value="momo">Mobile Money (MoMo)</option>
+                                    <option value="pos">POS terminal</option>
+                                    <option value="bank">Bank transfer</option>
+                                </select>
+                            </div>
+                            <div id="salePaymentAccountField" style="display:none;">
+                                <label for="salePaymentAccount">Account paid to<span class="req">*</span></label>
+                                <select id="salePaymentAccount"></select>
+                            </div>
+                            <div>
+                                <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;height:46px;">
+                                    <input type="checkbox" id="salePaymentConfirmed" style="width:18px;height:18px;accent-color:var(--c-success);" />
+                                    Payment confirmed
+                                </label>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="sale-section">
+                        <h2>Staff &amp; note</h2>
+                        <div class="sale-grid">
+                            <div>
+                                <label for="saleStaffCode">Your staff ID<span class="req">*</span></label>
+                                <input type="text" id="saleStaffCode" placeholder="e.g. CH-A-001" autocomplete="off" required />
+                                <small id="saleStaffName" class="pt-staff-resolve">Type your code to confirm your name</small>
+                            </div>
+                            <div class="field--full">
+                                <label for="saleNote">Note <span class="hint">(optional)</span></label>
+                                <input type="text" id="saleNote" placeholder="Anything the warehouse should know" />
+                            </div>
+                        </div>
+                    </section>
+
+                    <div class="sale-actions">
+                        <button type="submit" class="btn btn--primary" id="saleSubmitBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            <span>Generate invoice</span>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ============================== -->
+            <!--        PURCHASES VIEW          -->
+            <!-- ============================== -->
+            <section class="view" id="view-purchases">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Sales / Purchases</h1>
+                        <p>Every recorded sale. Click a row for full details and to re-print the invoice.</p>
+                    </div>
+                </div>
+
+                <div class="report-grid" id="salesSummary"></div>
+
+                <div class="table-wrap" style="margin-top:14px;">
+                    <div class="table-scroll">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Customer</th>
+                                    <th>Items</th>
+                                    <th>Total</th>
+                                    <th>Payment</th>
+                                    <th>Status</th>
+                                    <th>When</th>
+                                    <th style="text-align:right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="purchasesBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="empty" id="purchasesEmpty" style="display:none;">
+                        <div class="empty__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h2l3 11h11l3-7H6"/></svg>
+                        </div>
+                        <h3>No sales yet</h3>
+                        <p>New sales appear here once staff records them in <strong>New Sale</strong>.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================== -->
+            <!--      VERIFY INVOICE VIEW       -->
+            <!-- ============================== -->
+            <section class="view" id="view-verify-invoice">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Verify Invoice</h1>
+                        <p>Enter the invoice code from the printed copy. PASS unlocks dispatch.</p>
+                    </div>
+                </div>
+
+                <div class="verify-card">
+                    <label for="verifyInvoiceCode">Invoice code</label>
+                    <div class="verify-row">
+                        <input type="text" id="verifyInvoiceCode" placeholder="e.g. INV-A-20260522-X3FQ7K" autocomplete="off" style="font-family:var(--f-mono);font-size:1rem;letter-spacing:0.04em;text-transform:uppercase;" />
+                        <button type="button" class="btn btn--primary" id="verifyInvoiceBtn">Validate</button>
+                    </div>
+                    <div>
+                        <label for="verifyValidatorCode">Your staff ID<span class="req">*</span></label>
+                        <input type="text" id="verifyValidatorCode" placeholder="e.g. CH-A-001" autocomplete="off" style="font-family:var(--f-mono);" />
+                        <small id="verifyValidatorName" class="pt-staff-resolve">Type your code to confirm your name</small>
+                    </div>
+                </div>
+
+                <div id="verifyResult"></div>
+            </section>
+
+            <!-- ============================== -->
             <!--      PAYMENT ACCOUNTS VIEW     -->
             <!-- ============================== -->
             <section class="view" id="view-payment-accounts">
@@ -3767,6 +4125,11 @@
                             <option value="product_transfer_requested">Product transfer requested</option>
                             <option value="product_transfer_received">Product transfer received</option>
                             <option value="product_transfer_cancelled">Product transfer cancelled</option>
+                            <option value="customer_order_created">Sale recorded</option>
+                            <option value="customer_order_validated_pass">Invoice validated · PASS</option>
+                            <option value="customer_order_validated_fail">Invoice validated · FAIL</option>
+                            <option value="customer_order_fulfilled">Sale fulfilled</option>
+                            <option value="customer_order_cancelled">Sale cancelled</option>
                         </select>
                     </label>
                 </div>
@@ -4311,6 +4674,31 @@
                     <span>Request from another branch</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--         INVOICE MODAL          -->
+    <!-- ============================== -->
+    <div class="modal" id="invoiceModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog" style="max-width:760px;">
+            <header class="modal__head">
+                <div>
+                    <h3 id="invoiceModalTitle">Invoice</h3>
+                    <p>Print this and hand it to the warehouse manager.</p>
+                </div>
+                <button class="modal__close" data-close="invoiceModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <div class="modal__body invoice-modal-body" id="invoiceDoc"></div>
+            <footer class="modal__foot">
+                <button type="button" class="btn" data-close="invoiceModal">Close</button>
+                <button type="button" class="btn btn--primary" id="invoicePrintBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                    <span>Print invoice</span>
+                </button>
+            </footer>
         </div>
     </div>
 
