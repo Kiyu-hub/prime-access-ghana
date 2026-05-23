@@ -258,17 +258,19 @@
            below re-show items per role. The existing .admin-only legacy
            class keeps working for "Director only" items. */
 
-        /* Legacy admin-only (Director ONLY) */
+        /* Legacy admin-only (Director + System Manager) */
         .nav .admin-only { display: none; }
         .is-admin .nav .admin-only,
-        body[data-role="admin"] .nav .admin-only { display: flex; }
+        body[data-role="admin"] .nav .admin-only,
+        body[data-role="system_manager"] .nav .admin-only { display: flex; }
         .is-admin .nav__label.admin-only,
-        body[data-role="admin"] .nav__label.admin-only { display: block; }
+        body[data-role="admin"] .nav__label.admin-only,
+        body[data-role="system_manager"] .nav__label.admin-only { display: block; }
 
-        /* Announcements (.staff-only) — visible to everyone EXCEPT Director.
-           Director sees announcements inside the Messages chat list. */
+        /* Announcements (.staff-only) — visible to everyone EXCEPT super-roles. */
         body.is-admin .nav .staff-only,
-        body[data-role="admin"] .nav .staff-only { display: none !important; }
+        body[data-role="admin"] .nav .staff-only,
+        body[data-role="system_manager"] .nav .staff-only { display: none !important; }
 
         /* Branch Manager: gets Drafts + Activity Logs + (read-only) Warehouses.
            Add/Edit/Delete buttons inside the Warehouses view are hidden in
@@ -278,9 +280,11 @@
         body[data-role="branch_manager"] .nav a[data-view="warehouses"] { display: flex !important; }
         body[data-role="branch_manager"] .nav__label.admin-only { display: block !important; }
 
-        /* Warehouse Manager: no Showroom (warehouse is their world). */
+        /* Warehouse Manager: no Showroom (warehouse is their world).
+           Reports stays visible for them but money is hidden via the
+           .no-money-warehouse-mgr class applied to financial elements. */
         body[data-role="warehouse_manager"] .nav a[data-view="showroom"] { display: none !important; }
-        body[data-role="warehouse_manager"] .nav a[data-view="reports"] { display: none !important; }
+        body[data-role="warehouse_manager"] .no-money-warehouse-mgr { display: none !important; }
 
         /* Plain Staff: hide Activity Logs nav link, but keep Drafts hidden.
            (Already hidden via .admin-only, this is just an explicit assert.) */
@@ -290,16 +294,20 @@
         /* ---- Phase 3 role gating: Sales / Purchases / Verify ---- */
         /* Default: hide */
         .nav .role-sales, .nav .role-purchases, .nav .role-verify { display: none; }
-        /* New Sale — staff, branch_manager, admin (NOT warehouse_manager) */
+        /* New Sale — staff, branch_manager, admin, system_manager (NOT warehouse_manager) */
         body[data-role="staff"] .nav .role-sales,
         body[data-role="branch_manager"] .nav .role-sales,
-        body[data-role="admin"] .nav .role-sales { display: flex; }
-        /* Sales/Purchases list — branch_manager, admin */
+        body[data-role="admin"] .nav .role-sales,
+        body[data-role="system_manager"] .nav .role-sales { display: flex; }
+        /* Sales/Purchases list — staff (their own), branch_manager, admin, system_manager */
+        body[data-role="staff"] .nav .role-purchases,
         body[data-role="branch_manager"] .nav .role-purchases,
-        body[data-role="admin"] .nav .role-purchases { display: flex; }
-        /* Verify Invoice — warehouse_manager, admin */
+        body[data-role="admin"] .nav .role-purchases,
+        body[data-role="system_manager"] .nav .role-purchases { display: flex; }
+        /* Verify Invoice — warehouse_manager, admin, system_manager */
         body[data-role="warehouse_manager"] .nav .role-verify,
-        body[data-role="admin"] .nav .role-verify { display: flex; }
+        body[data-role="admin"] .nav .role-verify,
+        body[data-role="system_manager"] .nav .role-verify { display: flex; }
 
         .sb-user {
             padding: 14px;
@@ -4558,6 +4566,7 @@
                             <option value="branch_manager">Branch Manager</option>
                             <option value="warehouse_manager">Warehouse Manager</option>
                             <option value="admin">Director</option>
+                            <option value="system_manager">System Manager</option>
                         </select>
                     </div>
                     <div id="staffWarehouseField" style="display:none;">

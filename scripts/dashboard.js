@@ -330,7 +330,7 @@
             const all = await window.CH.products.list(null); // fetch all, filter client-side
             if (role === 'warehouse_manager') {
                 products = (whScope === 'ALL') ? all : all.filter((p) => whScope.includes(p.warehouse_id));
-            } else if (role === 'admin' || branchScope === 'ALL') {
+            } else if (isSuperRole(role) || branchScope === 'ALL') {
                 products = all;
             } else {
                 products = all.filter((p) => branchScope.includes(p.branch_id));
@@ -1184,7 +1184,7 @@
             if (allBranchesCache.length === 0) allBranchesCache = await window.CH.branches.list();
             allBranchesCacheList = allBranchesCache;
             // Toggle add button + row actions based on role
-            if (WAREHOUSE_ELS.addBtn) WAREHOUSE_ELS.addBtn.style.display = (role === 'admin') ? '' : 'none';
+            if (WAREHOUSE_ELS.addBtn) WAREHOUSE_ELS.addBtn.style.display = isSuperRole(role) ? '' : 'none';
             renderWarehouses();
         } catch (err) {
             console.error(err);
@@ -1229,7 +1229,7 @@
     function populateWarehouseManagerSelect() {
         if (!WAREHOUSE_ELS.manager) return;
         const opts = ['<option value="">— No manager assigned —</option>']
-            .concat((staffList || []).filter((s) => s.role === 'warehouse_manager' || s.role === 'admin').map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
+            .concat((staffList || []).filter((s) => s.role === 'warehouse_manager' || isSuperRole(s.role)).map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
             .join('');
         WAREHOUSE_ELS.manager.innerHTML = opts;
     }
@@ -1624,7 +1624,7 @@
     function populateBranchManagerSelect() {
         const sel = document.getElementById('branchManager');
         if (!sel) return;
-        const eligible = (staffList || []).filter((s) => s.role === 'branch_manager' || s.role === 'admin');
+        const eligible = (staffList || []).filter((s) => s.role === 'branch_manager' || isSuperRole(s.role));
         sel.innerHTML = ['<option value="">— No manager assigned —</option>']
             .concat(eligible.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
             .join('');
@@ -1741,8 +1741,8 @@
         }
         els.staffEmpty.style.display = 'none';
 
-        const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director' })[r] || (r || 'Staff');
-        const rolePillClass = (r) => r === 'admin' ? 'pill pill--admin' : 'pill';
+        const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director', 'system_manager': 'System Manager' })[r] || (r || 'Staff');
+        const rolePillClass = (r) => (r === 'admin' || r === 'system_manager') ? 'pill pill--admin' : 'pill';
         els.staffBody.innerHTML = staffList.map((s) => `
             <tr>
                 <td>
@@ -1800,7 +1800,7 @@
         const wrap = document.getElementById('staffManagesAllField');
         if (!wrap) return;
         const role = els.staffRole.value;
-        const show = (role === 'branch_manager' || role === 'warehouse_manager' || role === 'admin');
+        const show = (role === 'branch_manager' || role === 'warehouse_manager' || isSuperRole(role));
         wrap.style.display = show ? '' : 'none';
     }
 
@@ -1877,7 +1877,7 @@
             password: els.staffPassword.value,
             role,
             branch_id: els.staffBranch.value || null,
-            is_admin: role === 'admin',
+            is_admin: isSuperRole(role),
             manages_all_branches:   !!(allBranchesEl   && allBranchesEl.checked),
             manages_all_warehouses: !!(allWarehousesEl && allWarehousesEl.checked),
         };
@@ -2642,14 +2642,15 @@
         try {
             const { branches: br, products: prods, staff: stf } = await window.CH.reports.overview();
             const role = currentRole();
+            const hideMoney = role === 'warehouse_manager';
 
             // Role-scoped visibility:
-            //   admin             -> everything
-            //   branch_manager    -> their branch
-            //   warehouse_manager -> their warehouse (independent of branch)
-            //   staff             -> their branch (read-only summary)
+            //   admin / system_manager -> everything
+            //   branch_manager         -> their branch
+            //   warehouse_manager      -> their warehouse (no money)
+            //   staff                  -> their branch (read-only summary)
             let visibleProducts, visibleBranches, visibleStaff, scopeLabel;
-            if (role === 'admin') {
+            if (isSuperRole(role)) {
                 visibleProducts = prods;
                 visibleBranches = br;
                 visibleStaff = stf;
@@ -2685,19 +2686,28 @@
             const staffCount = visibleStaff.length;
             const adminCount = visibleStaff.filter((s) => s.is_admin).length;
 
-            els.reportCards.innerHTML = [
+            // Build cards. Money cards get a no-money-warehouse-mgr class so
+            // CSS auto-hides them from Warehouse Managers.
+            const cards = [
                 card('Total products',  totalProducts.toLocaleString(), 'in inventory', 'accent'),
                 card('Stock units',     totalUnits.toLocaleString(),    'units on hand', ''),
-                card('Inventory value', CURRENCY + ' ' + money.format(totalValue), 'at retail price', 'accent'),
+            ];
+            if (!hideMoney) {
+                cards.push(card('Inventory value', CURRENCY + ' ' + money.format(totalValue), 'at retail price', 'accent'));
+            }
+            cards.push(
                 card('Low stock',       lowStock.toLocaleString(),      `≤ ${LOW_STOCK_THRESHOLD} units`, lowStock > 0 ? 'alert' : ''),
                 card('Out of stock',    outOfStock.toLocaleString(),    'needs restocking', outOfStock > 0 ? 'alert' : ''),
-                card('Branches',        branchesCount.toLocaleString(), session.is_admin ? 'showrooms' : 'your branch',     ''),
-                card('Staff',           staffCount.toLocaleString(),    session.is_admin
+                card('Branches',        branchesCount.toLocaleString(), isSuperRole(role) ? 'showrooms' : 'your branch',     ''),
+                card('Staff',           staffCount.toLocaleString(),    isSuperRole(role)
                     ? `${adminCount} Director${adminCount === 1 ? '' : 's'} company-wide`
                     : `at ${session.branch_name || 'your branch'}`,
                     ''),
-                card('Avg price',       totalProducts ? CURRENCY + ' ' + money.format(totalValue / Math.max(totalUnits, 1)) : '—', 'per unit', ''),
-            ].join('');
+            );
+            if (!hideMoney) {
+                cards.push(card('Avg price', totalProducts ? CURRENCY + ' ' + money.format(totalValue / Math.max(totalUnits, 1)) : '—', 'per unit', ''));
+            }
+            els.reportCards.innerHTML = cards.join('');
 
             // Per-branch breakdown
             const branchRows = visibleBranches.map((b) => {
@@ -2807,7 +2817,7 @@
         // Drafts are visible to admin + branch_manager only
         if (role !== 'admin' && role !== 'branch_manager') { host.innerHTML = ''; return; }
         try {
-            const drafts = await window.CH.drafts.list(role === 'admin' ? null : session.branch_id);
+            const drafts = await window.CH.drafts.list(isSuperRole(role) ? null : session.branch_id);
             const ready = drafts.filter((d) => d.item_no && d.description && d.price && d.stock != null).length;
             const needing = drafts.length - ready;
             host.innerHTML = `
@@ -4381,21 +4391,35 @@
        Sets body[data-role] so CSS gating activates, and provides a
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
+    // System Manager has the same view list as admin (everything).
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice'];
     const VIEWS_BY_ROLE = {
-        admin:             ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice'],
+        admin:             ALL_VIEWS,
+        system_manager:    ALL_VIEWS,
         // Branch Manager: normal privileges + warehouse VIEW (read-only,
         // scoped to their branch). No add/edit/delete — that stays admin.
         branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','product-transfers','new-sale','purchases'],
-        warehouse_manager: ['products','messages','announcements','product-transfers','verify-invoice'],
-        staff:             ['products','showroom','reports','messages','announcements','product-transfers','new-sale'],
+        // Warehouse Manager: stock & transfers focus. Reports visible but
+        // money fields are hidden by CSS (no-money-warehouse-mgr).
+        warehouse_manager: ['products','reports','messages','announcements','product-transfers','verify-invoice'],
+        // Staff: can record sales AND see their OWN sales history.
+        staff:             ['products','showroom','reports','messages','announcements','product-transfers','new-sale','purchases'],
     };
 
     function currentRole() {
         if (!session) return 'staff';
-        if (session.is_admin) return 'admin';
         const r = session.role;
-        if (['staff','branch_manager','warehouse_manager','admin'].includes(r)) return r;
+        if (['staff','branch_manager','warehouse_manager','admin','system_manager'].includes(r)) return r;
+        if (session.is_admin) return 'admin';
         return 'staff';
+    }
+
+    // Returns true for the two super-roles that have absolute control.
+    // Use everywhere instead of `session.is_admin` so System Manager
+    // gets the same treatment as Director without duplicate checks.
+    function isSuperRole(r) {
+        const role = r || currentRole();
+        return role === 'admin' || role === 'system_manager';
     }
 
     // Returns the set of branch_ids a session covers, OR the sentinel 'ALL'.
@@ -4405,7 +4429,7 @@
     //     listed as manager_staff_id (cached from `branches`).
     function getManagedBranchIds() {
         if (!session) return [];
-        if (session.is_admin || session.manages_all_branches) return 'ALL';
+        if (isSuperRole() || session.manages_all_branches) return 'ALL';
         const home = session.branch_id;
         const cache = (typeof branches !== 'undefined' && Array.isArray(branches)) ? branches : [];
         const managed = cache.filter((b) => b.manager_staff_id === session.id).map((b) => b.id);
@@ -4417,7 +4441,7 @@
     // Returns the set of warehouse_ids a session covers, OR 'ALL'.
     function getManagedWarehouseIds() {
         if (!session) return [];
-        if (session.is_admin || session.manages_all_warehouses) return 'ALL';
+        if (isSuperRole() || session.manages_all_warehouses) return 'ALL';
         const home = session.warehouse_id;
         const cache = (typeof warehousesCache !== 'undefined' && Array.isArray(warehousesCache)) ? warehousesCache : [];
         const managed = cache.filter((w) => w.manager_staff_id === session.id).map((w) => w.id);
@@ -4788,13 +4812,39 @@
     }
 
     // ---- New Sale view ------------------------------------------
-    function initNewSale() {
+    // Resolves the default warehouse for the user's branch. Falls back
+    // to the user's session.warehouse_id, then any warehouse linked to
+    // the branch (regardless of default flag), then null.
+    function resolveDefaultWarehouseForUser() {
+        if (!session) return null;
+        if (session.warehouse_id) return session.warehouse_id;
+        if (!session.branch_id) return null;
+        if (!warehousesCache || warehousesCache.length === 0) return null;
+        const defaultWh = warehousesCache.find((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id && b.is_default));
+        if (defaultWh) return defaultWh.id;
+        const anyWh = warehousesCache.find((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id));
+        return anyWh ? anyWh.id : null;
+    }
+
+    async function initNewSale() {
         // Reset the form
         const form = document.getElementById('newSaleForm');
         if (!form) return;
-        if (!session.branch_id && !session.is_admin) {
+        if (currentRole() === 'warehouse_manager') {
+            toast('Warehouse managers do not record sales.', 'error');
+            return;
+        }
+        if (!session.branch_id && !isSuperRole()) {
             toast('You must be assigned to a branch to record sales.', 'error');
             return;
+        }
+        // Lazy-load warehouses if not yet cached (needed to pick a default)
+        if (!warehousesCache || warehousesCache.length === 0) {
+            try {
+                if (window.CH && window.CH.warehouses) {
+                    warehousesCache = await window.CH.warehouses.listWithBranches();
+                }
+            } catch (_) { /* not migrated yet */ }
         }
         form.reset();
         // Clear lines + add a first one
@@ -4984,7 +5034,7 @@
             submitBtn.querySelector('span').textContent = 'Generating…';
             const res = await window.CH.customerOrders.create({
                 branch_id: session.branch_id || null,
-                warehouse_id: session.is_admin ? null : (warehousesCache.find((w) => (w.branches || []).some((b) => b.branch_id === session.branch_id && b.is_default)) || {}).id || null,
+                warehouse_id: resolveDefaultWarehouseForUser(),
                 client_name: clientName,
                 client_phone: clientPhone,
                 client_email: clientEmail,
@@ -5108,12 +5158,18 @@
             const role = currentRole();
             const branchScope = getManagedBranchIds();
             const opts = { limit: 500 };
-            if (role !== 'admin' && branchScope !== 'ALL' && branchScope.length === 1) {
+            if (!isSuperRole(role) && branchScope !== 'ALL' && branchScope.length === 1) {
                 opts.branchId = branchScope[0];
             }
             const all = await window.CH.customerOrders.list(opts);
-            // Multi-branch managers: filter client-side
-            if (role !== 'admin' && branchScope !== 'ALL') {
+            // Filter rules:
+            //   - staff           -> only sales THEY initiated (their own)
+            //   - branch_manager  -> sales for branches they manage
+            //   - warehouse_mgr   -> never sees this view (gated above)
+            //   - super-role      -> everything
+            if (role === 'staff') {
+                purchasesCache = all.filter((o) => o.initiated_by === session.id);
+            } else if (!isSuperRole(role) && branchScope !== 'ALL') {
                 const allowed = new Set(branchScope);
                 purchasesCache = all.filter((o) => allowed.has(o.branch_id));
             } else {
@@ -5225,8 +5281,16 @@
             toast('Staff ID must match your signed-in user.', 'error');
             return;
         }
-        const warehouseId = session.warehouse_id;
-        if (!warehouseId && !session.is_admin) { toast('You are not assigned to a warehouse.', 'error'); return; }
+        let warehouseId = session.warehouse_id;
+        // Super-roles validate against the order's own warehouse_id
+        // (look it up by invoice code first if no warehouse assigned).
+        if (!warehouseId && isSuperRole()) {
+            try {
+                const lookup = await window.CH.customerOrders.getByInvoiceCode(code);
+                if (lookup && lookup.warehouse_id) warehouseId = lookup.warehouse_id;
+            } catch (_) {}
+        }
+        if (!warehouseId) { toast('You are not assigned to a warehouse — cannot validate.', 'error'); return; }
         try {
             verifyBtn.disabled = true;
             verifyBtn.textContent = 'Checking…';
@@ -5339,6 +5403,16 @@
         applyRoleVisibility();
         // Refresh taxonomy first so any modal opened during boot has dropdowns ready
         await refreshTaxonomyCache();
+        // Load warehouses (used by new-sale form to resolve the source
+        // warehouse) and branches (used by getManagedBranchIds).
+        try {
+            if (window.CH && window.CH.warehouses) {
+                warehousesCache = await window.CH.warehouses.listWithBranches();
+            }
+            if (window.CH && window.CH.branches) {
+                branches = await window.CH.branches.list();
+            }
+        } catch (_) { /* tables may not be migrated yet */ }
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();
