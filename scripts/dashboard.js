@@ -233,16 +233,63 @@
 
     /* ---------- user header ---------- */
     els.userName.textContent = session.name || 'Staff';
-    els.userBranch.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || '');
-    // Avatar always uses the brand logo (single brand identity for every user).
-    els.userAvatar.classList.add('avatar--logo');
-    els.userAvatar.replaceChildren(); // wipe stale text/children
-    const logoImg = new Image();
-    logoImg.src = 'assets/logo.png?v=4';
-    logoImg.alt = '';
-    logoImg.draggable = false;
-    els.userAvatar.appendChild(logoImg);
-    els.branchHeading.textContent = (session.branch_name || 'Unassigned') + ' · ' + (session.role || 'Staff');
+    const _displayRole = ({
+        'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager',
+        'admin': 'Director', 'system_manager': 'System Admin'
+    })[session.role] || (session.role || '');
+    els.userBranch.textContent = (session.branch_name || 'Unassigned') + ' · ' + _displayRole;
+    renderUserAvatar(session.image_url);
+    els.branchHeading.textContent = (session.branch_name || 'Unassigned') + ' · ' + _displayRole;
+
+    /* Sidebar avatar: staff photo if set, otherwise brand logo. */
+    function renderUserAvatar(imageUrl) {
+        if (!els.userAvatar) return;
+        els.userAvatar.replaceChildren();
+        if (imageUrl) {
+            els.userAvatar.classList.remove('avatar--logo');
+            els.userAvatar.style.background = 'transparent';
+            els.userAvatar.style.padding = '0';
+            const img = new Image();
+            img.src = imageUrl;
+            img.alt = '';
+            img.draggable = false;
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+            els.userAvatar.appendChild(img);
+        } else {
+            els.userAvatar.classList.add('avatar--logo');
+            els.userAvatar.style.background = '';
+            els.userAvatar.style.padding = '';
+            const logoImg = new Image();
+            logoImg.src = 'assets/logo.png?v=4';
+            logoImg.alt = '';
+            logoImg.draggable = false;
+            els.userAvatar.appendChild(logoImg);
+        }
+    }
+
+    /* Pull the signed-in user's own photo + start date asynchronously and
+       refresh the sidebar + session cache once it arrives. The staff_view
+       is read directly so we don't depend on the broader staff page being
+       loaded. */
+    (async function hydrateOwnProfile() {
+        try {
+            if (!window.CH || !window.CH.supabase || !session.id) return;
+            const { data, error } = await window.CH.supabase
+                .from('staff_view')
+                .select('image_url, started_at, warehouse_id, warehouse_name')
+                .eq('id', session.id)
+                .maybeSingle();
+            if (error || !data) return;
+            session.image_url = data.image_url || null;
+            session.started_at = data.started_at || null;
+            if (data.warehouse_id) session.warehouse_id = data.warehouse_id;
+            if (data.warehouse_name) session.warehouse_name = data.warehouse_name;
+            try { localStorage.setItem('ch_session', JSON.stringify(session)); } catch (_) {}
+            renderUserAvatar(session.image_url);
+        } catch (_) { /* silent */ }
+    })();
 
     /* ---------- view switcher (sidebar nav) ---------- */
     $$('.nav a[data-view]').forEach((link) => {
@@ -268,6 +315,18 @@
             // Fall back to the first allowed view (almost always 'products')
             const fallback = (VIEWS_BY_ROLE[role] || ['products'])[0];
             if (fallback && fallback !== view) switchView(fallback);
+            return;
+        }
+        // Feature-flag guard: System Admin can disable Product Transfers
+        // and Move Stock for the whole platform. Block the view if off.
+        if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
+            toast('This feature is currently disabled.', 'info');
+            switchView('products');
+            return;
+        }
+        if (view === 'move-stock' && featureFlagsCache && featureFlagsCache.move_stock_enabled === false) {
+            toast('This feature is currently disabled.', 'info');
+            switchView('products');
             return;
         }
         if (view !== currentView) previousView = currentView || 'products';
@@ -381,12 +440,15 @@
         // Stats based on full branch (not filtered)
         const totalUnits = products.reduce((s, p) => s + (Number(p.stock) || 0), 0);
         const lowCount = products.filter((p) => (Number(p.stock) || 0) > 0 && (Number(p.stock) || 0) <= LOW_STOCK_THRESHOLD).length;
+        const outCount = products.filter((p) => (Number(p.stock) || 0) <= 0).length;
         const totalValue = products.reduce((s, p) => s + ((Number(p.price) || 0) * (Number(p.stock) || 0)), 0);
 
         els.statTotal.textContent = products.length.toLocaleString();
         els.statIn.textContent    = totalUnits.toLocaleString();
         els.statLow.textContent   = lowCount.toLocaleString();
         els.statValue.textContent = CURRENCY + ' ' + money.format(totalValue);
+        const outEl = document.getElementById('statOut');
+        if (outEl) outEl.textContent = outCount.toLocaleString();
     }
 
     function productRow(p) {
@@ -1172,6 +1234,10 @@
         const role = currentRole();
         if (role !== 'admin' && role !== 'system_manager' && role !== 'branch_manager') return;
         try {
+            // Make sure the staff list is loaded so the Manager column resolves names.
+            if (!staffList || staffList.length === 0) {
+                try { staffList = await window.CH.staff.list(); } catch (_) {}
+            }
             const all = await window.CH.warehouses.listWithBranches();
             // Branch Manager: scope to warehouses linked to any branch they manage
             if (role === 'branch_manager') {
@@ -1295,10 +1361,17 @@
 
     function populateWarehouseManagerSelect() {
         if (!WAREHOUSE_ELS.manager) return;
-        const opts = ['<option value="">— No manager assigned —</option>']
-            .concat((staffList || []).filter((s) => s.role === 'warehouse_manager' || isSuperRole(s.role)).map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
-            .join('');
-        WAREHOUSE_ELS.manager.innerHTML = opts;
+        const eligible = (staffList || []).filter((s) => s.role === 'warehouse_manager');
+        if (eligible.length === 0) {
+            WAREHOUSE_ELS.manager.innerHTML = '<option value="">— No warehouse managers yet — add one in Staff first —</option>';
+            WAREHOUSE_ELS.manager.disabled = true;
+        } else {
+            WAREHOUSE_ELS.manager.innerHTML = ['<option value="" disabled selected>Pick a warehouse manager</option>']
+                .concat(eligible.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}${s.email ? ' · ' + escapeHtml(s.email) : ''}</option>`))
+                .join('');
+            WAREHOUSE_ELS.manager.disabled = false;
+        }
+        WAREHOUSE_ELS.manager.required = true;
     }
 
     function renderWarehouseBranchLinks(warehouseId) {
@@ -1367,7 +1440,12 @@
         const id = WAREHOUSE_ELS.editId.value;
         const name = WAREHOUSE_ELS.name.value.trim();
         const code = WAREHOUSE_ELS.code.value.trim();
+        const managerId = WAREHOUSE_ELS.manager.value || '';
         if (!name || !code) { toast('Name and code are required.', 'error'); return; }
+        if (!managerId) {
+            toast('Pick a warehouse manager. Create one in Staff first if none exists.', 'error');
+            return;
+        }
         // Collect linked branches + default
         const linkInputs = Array.from(WAREHOUSE_ELS.links.querySelectorAll('input[data-wh-link-branch]'));
         const defaultRadio = WAREHOUSE_ELS.links.querySelector('input[name="whDefaultBranch"]:checked');
@@ -1810,7 +1888,7 @@
         }
         els.staffEmpty.style.display = 'none';
 
-        const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director', 'system_manager': 'System Manager' })[r] || (r || 'Staff');
+        const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director', 'system_manager': 'System Admin' })[r] || (r || 'Staff');
         const rolePillClass = (r) => (r === 'admin' || r === 'system_manager') ? 'pill pill--admin' : 'pill';
         els.staffBody.innerHTML = staffList.map((s) => {
             const avatarInner = s.image_url
@@ -2600,6 +2678,8 @@
      */
     async function shouldShowTransferRequestButton(p) {
         if (!p || !window.CH || !window.CH.productTransfers) return false;
+        // System Admin can switch off the whole transfers feature.
+        if (featureFlagsCache && featureFlagsCache.transfers_enabled === false) return false;
         if (currentRole() === 'warehouse_manager') return false;
         const itemNo = (p.item_no || '').trim();
         if (!itemNo) return false;
@@ -3136,15 +3216,19 @@
 
             // Build cards. Money cards get a no-money-warehouse-mgr class so
             // CSS auto-hides them from Warehouse Managers.
+            // Inventory Value is reserved for Director + System Admin —
+            // everyone else sees Total Sales (theirs or their branch's) in its place.
+            const isSuper = isSuperRole(role);
             const cards = [
                 card('Total products',  totalProducts.toLocaleString(), 'in inventory', 'accent'),
                 card('Stock units',     totalUnits.toLocaleString(),    'units on hand', ''),
             ];
-            if (!hideMoney) {
+            if (!hideMoney && isSuper) {
                 cards.push(card('Inventory value', CURRENCY + ' ' + money.format(totalValue), 'at retail price', 'accent'));
             }
             if (!hideMoney && salesAgg) {
-                cards.push(card('Total sales', CURRENCY + ' ' + money.format(salesAgg.total), salesAgg.count + ' invoice' + (salesAgg.count === 1 ? '' : 's'), 'accent'));
+                const salesLabel = isSuper ? 'Total sales' : 'Your sales';
+                cards.push(card(salesLabel, CURRENCY + ' ' + money.format(salesAgg.total), salesAgg.count + ' invoice' + (salesAgg.count === 1 ? '' : 's'), 'accent'));
             }
             if (movesAgg) {
                 cards.push(card('Stock moved', movesAgg.units.toLocaleString(), movesAgg.count + ' transfer' + (movesAgg.count === 1 ? '' : 's'), ''));
@@ -3238,13 +3322,20 @@
     }
 
     /* ---- Phase 4 report aggregates: sales + stock moved ---------- */
+    // In live mode read env='live'. In dev mode read everything so the
+    // sandbox preview reflects real-world totals.
+    function _envScope(q, mode) {
+        return mode === 'dev' ? q : q.eq('env', 'live');
+    }
     async function fetchSalesAggregate(role, mode) {
         if (!window.CH || !window.CH.supabase) return null;
         let q = window.CH.supabase
             .from('customer_orders')
-            .select('id, total, branch_id, mode')
-            .eq('mode', mode || 'live');
-        if (role === 'branch_manager' || role === 'staff') q = q.eq('branch_id', session.branch_id);
+            .select('id, total, branch_id, initiated_by');
+        q = _envScope(q, mode);
+        if (role === 'staff') q = q.eq('initiated_by', session.id);
+        else if (role === 'branch_manager') q = q.eq('branch_id', session.branch_id);
+        // warehouse_manager: leave unfiltered (Warehouse Manager doesn't see money anyway)
         const { data, error } = await q;
         if (error) return null;
         const rows = data || [];
@@ -3255,9 +3346,9 @@
         if (!window.CH || !window.CH.supabase) return null;
         let q = window.CH.supabase
             .from('product_transfer_requests')
-            .select('id, qty_received, from_warehouse_id, to_warehouse_id, to_branch_id, from_branch_id, mode, status')
-            .eq('mode', mode || 'live')
+            .select('id, qty_received, from_warehouse_id, to_warehouse_id, to_branch_id, from_branch_id, status')
             .eq('status', 'received');
+        q = _envScope(q, mode);
         if (role === 'branch_manager' || role === 'staff') q = q.or('to_branch_id.eq.' + session.branch_id + ',from_branch_id.eq.' + session.branch_id);
         else if (role === 'warehouse_manager' && session.warehouse_id) q = q.or('to_warehouse_id.eq.' + session.warehouse_id + ',from_warehouse_id.eq.' + session.warehouse_id);
         const { data, error } = await q;
@@ -3270,9 +3361,9 @@
         if (!window.CH || !window.CH.supabase) return [];
         let q = window.CH.supabase
             .from('product_transfer_requests')
-            .select('qty_received, requested_by, received_by, status, mode, requested_by_code')
-            .eq('mode', mode || 'live')
+            .select('qty_received, requested_by, received_by, status, requested_by_code')
             .eq('status', 'received');
+        q = _envScope(q, mode);
         const { data, error } = await q;
         if (error) return [];
         // Aggregate by the staff who initiated (requested_by).
@@ -3327,8 +3418,8 @@
     async function renderReportDraftsSection(role, visibleProducts) {
         const host = document.getElementById('reportDrafts');
         if (!host) return;
-        // Drafts are visible to System Manager + Branch Manager only (Director no longer handles drafts)
-        if (role !== 'system_manager' && role !== 'branch_manager') { host.innerHTML = ''; return; }
+        // Drafts are visible to System Admin only.
+        if (role !== 'system_manager') { host.innerHTML = ''; return; }
         try {
             const drafts = await window.CH.drafts.list(isSuperRole(role) ? null : session.branch_id);
             const ready = drafts.filter((d) => d.item_no && d.description && d.price && d.stock != null).length;
@@ -4648,9 +4739,9 @@
     });
 
     async function updateDraftsBadge() {
-        // Drafts visible to: System Manager and Branch Manager (no longer Director)
+        // Drafts visible to: System Admin only.
         const role = currentRole();
-        if (role !== 'system_manager' && role !== 'branch_manager') return;
+        if (role !== 'system_manager') return;
         try {
             // For Branch Manager, count only their branch's drafts
             let n;
@@ -4894,7 +4985,7 @@
                     try { await loadShowroom(); } catch (_) {}
                 }
                 const r = currentRole();
-                if (r === 'system_manager' || r === 'branch_manager') {
+                if (r === 'system_manager') {
                     try { await updateDraftsBadge(); } catch (_) {}
                 }
             }, 600);
@@ -4905,9 +4996,9 @@
        Sets body[data-role] so CSS gating activates, and provides a
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
-    // System Manager has the full view list (everything).
+    // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
-    // by System Manager: Drafts, Extract from image, Media, ID Cards.
+    // by System Admin: Drafts, Extract from image, Media, ID Cards.
     const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards'];
     const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards');
     const VIEWS_BY_ROLE = {
@@ -4915,7 +5006,7 @@
         system_manager:    ALL_VIEWS,
         // Branch Manager: normal privileges + warehouse VIEW (read-only,
         // scoped to their branch). No add/edit/delete — that stays admin.
-        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','warehouse-stock','product-transfers','new-sale','purchases'],
+        branch_manager:    ['products','showroom','reports','messages','announcements','logs','warehouses','warehouse-stock','product-transfers','new-sale','purchases'],
         // Warehouse Manager: stock & transfers focus. Reports visible but
         // money fields are hidden by CSS (no-money-warehouse-mgr).
         // Warehouse Stock is their primary view.
@@ -4933,7 +5024,7 @@
     }
 
     // Returns true for the two super-roles that have absolute control.
-    // Use everywhere instead of `session.is_admin` so System Manager
+    // Use everywhere instead of `session.is_admin` so System Admin
     // gets the same treatment as Director without duplicate checks.
     function isSuperRole(r) {
         const role = r || currentRole();
@@ -5948,10 +6039,10 @@
        Dev/Live mode toggle. All gated server-side too where it matters.
        ============================================================ */
 
-    /* ---- Move Stock view (Director + System Manager) ---------- */
+    /* ---- Move Stock view (Director + System Admin) ---------- */
     async function initMoveStock() {
         if (!isSuperRole()) {
-            toast('Only Director or System Manager can move stock directly.', 'error');
+            toast('Only Director or System Admin can move stock directly.', 'error');
             switchView('products');
             return;
         }
@@ -6029,7 +6120,7 @@
     let mediaCache = [];
     async function loadMediaLibrary() {
         if (!isSuperRole()) {
-            toast('Media Library is for System Manager.', 'error');
+            toast('Media Library is for System Admin.', 'error');
             switchView('products');
             return;
         }
@@ -6163,6 +6254,7 @@
         accent_color: '#0369A1',
         show_email: true,
         show_started_at: true,
+        show_branch_location: true,
         show_qr: true,
         enabled_for_print: false,
     };
@@ -6174,7 +6266,7 @@
             'branch_manager': 'Branch Manager',
             'warehouse_manager': 'Warehouse Manager',
             'admin': 'Director',
-            'system_manager': 'System Manager',
+            'system_manager': 'System Admin',
         })[staffRow.role] || 'Staff';
         const photoInner = staffRow.image_url
             ? `<img src="${escapeAttr(staffRow.image_url)}" alt="" />`
@@ -6182,6 +6274,11 @@
         const startedAt = staffRow.started_at
             ? new Date(staffRow.started_at).toLocaleDateString()
             : '—';
+        // Resolve branch location from cache or staff row
+        const branch = (branches || []).find((b) => b.id === staffRow.branch_id);
+        const branchLocation = (branch && branch.location)
+            || staffRow.branch_location
+            || (staffRow.branch_name || '');
         const qrPayload = JSON.stringify({
             id: staffRow.id,
             name: staffRow.name,
@@ -6189,6 +6286,8 @@
             staff_code: staffRow.staff_code,
             role: staffRow.role,
             branch_id: staffRow.branch_id,
+            branch_name: staffRow.branch_name,
+            branch_location: branchLocation,
             started_at: staffRow.started_at,
             issued: new Date().toISOString().slice(0, 10),
         });
@@ -6198,12 +6297,17 @@
                 const qr = window.qrcode(0, 'M');
                 qr.addData(qrPayload);
                 qr.make();
-                qrSvg = qr.createSvgTag({ cellSize: 2, margin: 0, scalable: true });
+                // Render as SVG with explicit 100% width/height so it
+                // fills its container in every template (Modern's QR was
+                // breaking because the SVG had no intrinsic sizing).
+                qrSvg = qr.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+                qrSvg = qrSvg.replace('<svg ', '<svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet" ');
             } catch (_) { qrSvg = ''; }
         }
         const fields = [];
         if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field"><b>Email</b> ${escapeHtml(staffRow.email)}</div>`);
         if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
+        if (settings.show_branch_location && branchLocation) fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchLocation)}</div>`);
         return `<div class="id-card" data-template="${settings.template}" style="--idc-accent:${escapeAttr(acc)};">
             <div class="id-card__photo-col">
                 <div class="id-card__photo">${photoInner}</div>
@@ -6238,7 +6342,7 @@
 
     async function loadIdCards() {
         if (!isSuperRole()) {
-            toast('Staff ID Cards is for System Manager.', 'error');
+            toast('Staff ID Cards is for System Admin.', 'error');
             switchView('products');
             return;
         }
@@ -6256,6 +6360,7 @@
         const accEl = $('#idCardAccent');         if (accEl) accEl.value = idCardSettings.accent_color || '#0369A1';
         const emEl  = $('#idCardShowEmail');      if (emEl)  emEl.checked = !!idCardSettings.show_email;
         const stEl  = $('#idCardShowStarted');    if (stEl)  stEl.checked = !!idCardSettings.show_started_at;
+        const brEl  = $('#idCardShowBranch');     if (brEl)  brEl.checked = idCardSettings.show_branch_location !== false;
         const qrEl  = $('#idCardShowQr');         if (qrEl)  qrEl.checked = !!idCardSettings.show_qr;
         const enEl  = $('#idCardEnablePrint');    if (enEl)  enEl.checked = !!idCardSettings.enabled_for_print;
         const printBtn = $('#idCardPrintAllBtn'); if (printBtn) printBtn.disabled = !idCardSettings.enabled_for_print;
@@ -6277,12 +6382,13 @@
             idCardSettings.accent_color = accEl.value;
             renderIdCardPreview();
         });
-        ['#idCardShowEmail','#idCardShowStarted','#idCardShowQr'].forEach((sel) => {
+        ['#idCardShowEmail','#idCardShowStarted','#idCardShowBranch','#idCardShowQr'].forEach((sel) => {
             const el = document.querySelector(sel);
             if (!el) return;
             el.addEventListener('change', () => {
                 if (sel === '#idCardShowEmail')   idCardSettings.show_email = el.checked;
                 if (sel === '#idCardShowStarted') idCardSettings.show_started_at = el.checked;
+                if (sel === '#idCardShowBranch')  idCardSettings.show_branch_location = el.checked;
                 if (sel === '#idCardShowQr')      idCardSettings.show_qr = el.checked;
                 renderIdCardPreview();
             });
@@ -6321,6 +6427,52 @@
     }
     wireIdCardControls();
 
+    /* ---- Feature flags (System Admin sidebar toggles) -------- */
+    let featureFlagsCache = { transfers_enabled: true, move_stock_enabled: true, id_cards_visible_to_director: false, director_id_card_template: 'classic' };
+
+    function applyFeatureFlagsUi() {
+        document.body.dataset.flagTransfers  = featureFlagsCache.transfers_enabled  ? 'on' : 'off';
+        document.body.dataset.flagMoveStock  = featureFlagsCache.move_stock_enabled ? 'on' : 'off';
+        // Reflect into the sidebar toggles if present
+        const t = document.getElementById('ffTransfers');
+        const m = document.getElementById('ffMoveStock');
+        const i = document.getElementById('ffIdCardsDirector');
+        const tpl = document.getElementById('ffDirectorTpl');
+        const tplRow = document.getElementById('ffDirectorTplRow');
+        if (t) t.checked = !!featureFlagsCache.transfers_enabled;
+        if (m) m.checked = !!featureFlagsCache.move_stock_enabled;
+        if (i) i.checked = !!featureFlagsCache.id_cards_visible_to_director;
+        if (tpl) tpl.value = featureFlagsCache.director_id_card_template || 'classic';
+        if (tplRow) tplRow.style.display = featureFlagsCache.id_cards_visible_to_director ? 'flex' : 'none';
+    }
+
+    (async function loadFeatureFlagsOnBoot() {
+        try {
+            if (window.CH && window.CH.featureFlags) {
+                featureFlagsCache = await window.CH.featureFlags.get();
+                applyFeatureFlagsUi();
+            }
+        } catch (_) {}
+    })();
+
+    function wireFeatureFlagToggles() {
+        async function save(patch) {
+            featureFlagsCache = { ...featureFlagsCache, ...patch };
+            applyFeatureFlagsUi();
+            if (currentRole() !== 'system_manager') return;
+            try { await window.CH.featureFlags.update(patch); } catch (e) { toast('Could not save toggle: ' + (e.message || 'unknown'), 'error'); }
+        }
+        const t = document.getElementById('ffTransfers');
+        const m = document.getElementById('ffMoveStock');
+        const i = document.getElementById('ffIdCardsDirector');
+        const tpl = document.getElementById('ffDirectorTpl');
+        if (t)   t.addEventListener('change', () => save({ transfers_enabled: t.checked }));
+        if (m)   m.addEventListener('change', () => save({ move_stock_enabled: m.checked }));
+        if (i)   i.addEventListener('change', () => save({ id_cards_visible_to_director: i.checked }));
+        if (tpl) tpl.addEventListener('change', () => save({ director_id_card_template: tpl.value }));
+    }
+    wireFeatureFlagToggles();
+
     /* ---- Dev/Live mode toggle (sidebar) ---------------------- */
     function applyDevModeUi() {
         const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
@@ -6338,7 +6490,22 @@
         }
         const resetBtn = $('#sbResetDevBtn');
         if (resetBtn) resetBtn.hidden = mode !== 'dev';
+        const publishBtn = $('#sbPublishDevBtn');
+        if (publishBtn) publishBtn.hidden = mode !== 'dev';
     }
+    const _publishDevBtn = document.getElementById('sbPublishDevBtn');
+    if (_publishDevBtn) _publishDevBtn.addEventListener('click', async () => {
+        if (currentRole() !== 'system_manager') return;
+        if (!confirm('Publish every Dev-mode product change to Live?\nThis copies all dev products to live. Dev data is kept for further testing.')) return;
+        try {
+            const { error } = await window.CH.supabase.rpc('publish_all_dev');
+            if (error) throw error;
+            toast('Published dev changes to live. Reloading…', 'success');
+            setTimeout(() => window.location.reload(), 600);
+        } catch (err) {
+            toast('Publish failed: ' + (err.message || 'unknown error'), 'error');
+        }
+    });
     const _resetDevBtn = document.getElementById('sbResetDevBtn');
     if (_resetDevBtn) _resetDevBtn.addEventListener('click', async () => {
         if (currentRole() !== 'system_manager') return;
@@ -6356,7 +6523,7 @@
         const btn = e.target.closest('[data-mode-set]');
         if (!btn) return;
         if (!isSuperRole() || currentRole() !== 'system_manager') {
-            toast('Dev/Live switching is for System Manager.', 'error');
+            toast('Dev/Live switching is for System Admin.', 'error');
             return;
         }
         const next = btn.dataset.modeSet;
@@ -6383,13 +6550,18 @@
             if (window.CH && window.CH.branches) {
                 branches = await window.CH.branches.list();
             }
+            // Preload the staff list so staff-ID auto-fill on New Sale and
+            // Transfer Request works without first opening the Staff page.
+            if (window.CH && window.CH.staff) {
+                staffList = await window.CH.staff.list();
+            }
         } catch (_) { /* tables may not be migrated yet */ }
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();
-        // Drafts badge shows for System Manager + Branch Manager
+        // Drafts badge shows for System Admin only
         const r = currentRole();
-        if (r === 'system_manager' || r === 'branch_manager') await updateDraftsBadge();
+        if (r === 'system_manager') await updateDraftsBadge();
         // Announcement badge shows for everyone EXCEPT Director
         if (r !== 'admin') await updateAnnouncementBadge();
         // Product Transfers badge — load once at boot, then realtime keeps it fresh
@@ -6407,3 +6579,5 @@
         });
     })();
 })();
+
+

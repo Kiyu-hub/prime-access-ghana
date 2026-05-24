@@ -178,13 +178,19 @@
         try { return localStorage.getItem('ch_mode') === 'dev' ? 'dev' : 'live'; }
         catch (_) { return 'live'; }
     }
+    // In live mode reads see only env='live' rows. In dev mode reads see
+    // EVERYTHING — the System Admin can test against real data, but their
+    // writes are tagged 'dev' and stay isolated until they hit Publish.
+    function applyEnvFilter(q) {
+        return currentMode() === 'dev' ? q : q.eq('env', 'live');
+    }
 
     /* ---- products -------------------------------------------- */
     const products = {
         async list(branch_id) {
             let q = client.from('products').select('*').order('created_at', { ascending: false });
             if (branch_id) q = q.eq('branch_id', branch_id);
-            q = q.eq('mode', currentMode());
+            q = applyEnvFilter(q);
             const { data, error } = await q;
             if (error) throw error;
             return data || [];
@@ -202,7 +208,9 @@
             }
             // Tag new rows with the current mode (defaults to 'live' on the
             // server too — this just makes the intent explicit on inserts).
-            if (!isUpdate && !payload.mode) payload.mode = currentMode();
+            // Also delete legacy `mode` key if it leaked through from caller.
+            delete payload.mode;
+            if (!isUpdate && !payload.env) payload.env = currentMode();
 
             const q = isUpdate
                 ? client.from('products').update(payload).eq('id', row.id).select().single()
@@ -308,10 +316,9 @@
     /* ---- reports --------------------------------------------- */
     const reports = {
         async overview() {
-            const mode = currentMode();
             const [branchesRes, productsRes, staffRes] = await Promise.all([
                 client.from('branches').select('*'),
-                client.from('products').select('id,item_no,description,branch_id,price,stock,category,material,color,supplier,image_url,created_at').eq('mode', mode),
+                applyEnvFilter(client.from('products').select('id,item_no,description,branch_id,price,stock,category,material,color,supplier,image_url,created_at')),
                 client.from('staff_view').select('id,branch_id,is_admin'),
             ]);
             if (branchesRes.error)  throw branchesRes.error;
@@ -328,18 +335,19 @@
     /* ---- product audit logs ---------------------------------- */
     const logs = {
         async list(limit = 200) {
-            const { data, error } = await client.from('product_logs')
+            let q = client.from('product_logs')
                 .select('*')
                 .order('created_at', { ascending: false })
-                .eq('mode', currentMode())
                 .limit(limit);
+            q = applyEnvFilter(q);
+            const { data, error } = await q;
             if (error) throw error;
             return data || [];
         },
         async record({ product_id, item_no, action, branch_id, branch_name, staff_id, staff_name, note }) {
             const { error } = await client.from('product_logs').insert({
                 product_id: product_id || null,
-                mode: currentMode(),
+                env: currentMode(),
                 item_no: item_no || null,
                 action,
                 branch_id: branch_id || null,
@@ -554,8 +562,8 @@
         async list(opts = {}) {
             let q = client.from('product_transfer_requests')
                 .select('*, from_warehouse:from_warehouse_id(name,code), to_warehouse:to_warehouse_id(name,code), from_branch:from_branch_id(name), to_branch:to_branch_id(name)')
-                .order('requested_at', { ascending: false })
-                .eq('mode', currentMode());
+                .order('requested_at', { ascending: false });
+            q = applyEnvFilter(q);
             if (opts.status)            q = q.eq('status', opts.status);
             if (opts.fromWarehouseId)   q = q.eq('from_warehouse_id', opts.fromWarehouseId);
             if (opts.toBranchId)        q = q.eq('to_branch_id', opts.toBranchId);
@@ -570,8 +578,8 @@
         async countPending({ toBranchId, fromWarehouseId } = {}) {
             let q = client.from('product_transfer_requests')
                 .select('id', { count: 'exact', head: true })
-                .eq('status', 'pending')
-                .eq('mode', currentMode());
+                .eq('status', 'pending');
+            q = applyEnvFilter(q);
             if (toBranchId)     q = q.eq('to_branch_id', toBranchId);
             if (fromWarehouseId) q = q.eq('from_warehouse_id', fromWarehouseId);
             const { count, error } = await q;
@@ -583,12 +591,13 @@
         // a warehouse (typically the requester's own). Used to populate the
         // "From which branch" dropdown in the request modal.
         async findSourcesForItem(itemNo, excludeWarehouseId) {
-            const { data, error } = await client.from('products')
+            let q = client.from('products')
                 .select('id, warehouse_id, stock, branch_id, warehouses:warehouse_id(name,code), branches:branch_id(name)')
                 .eq('item_no', itemNo)
                 .gt('stock', 0)
-                .eq('is_draft', false)
-                .eq('mode', currentMode());
+                .eq('is_draft', false);
+            q = applyEnvFilter(q);
+            const { data, error } = await q;
             if (error) throw error;
             return (data || []).filter((p) => p.warehouse_id && p.warehouse_id !== excludeWarehouseId);
         },
@@ -712,8 +721,8 @@
         async list(opts = {}) {
             let q = client.from('customer_orders')
                 .select('*, branch:branch_id(name), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code)')
-                .order('created_at', { ascending: false })
-                .eq('mode', currentMode());
+                .order('created_at', { ascending: false });
+            q = applyEnvFilter(q);
             if (opts.branchId)       q = q.eq('branch_id', opts.branchId);
             if (opts.warehouseId)    q = q.eq('warehouse_id', opts.warehouseId);
             if (opts.status)         q = q.eq('status', opts.status);
@@ -807,7 +816,7 @@
                 p_qty: qty,
                 p_by_staff_id: by_staff_id,
                 p_note: note || null,
-                p_mode: mode || 'live',
+                p_env: mode || 'live',
             });
             if (error) throw error;
             return data; // MV-... code
@@ -818,14 +827,14 @@
     const media = {
         async list(mode) {
             let q = client.from('media_assets').select('*').order('created_at', { ascending: false });
-            if (mode) q = q.eq('mode', mode);
+            if (mode) q = q.eq('env', mode);
             const { data, error } = await q;
             if (error) throw error;
             return data || [];
         },
         async add({ url, public_id, filename, mime, bytes, uploaded_by, uploaded_by_name, note, mode }) {
             const { data, error } = await client.from('media_assets')
-                .insert({ url, public_id, filename, mime, bytes, uploaded_by, uploaded_by_name, note: note || null, mode: mode || 'live' })
+                .insert({ url, public_id, filename, mime, bytes, uploaded_by, uploaded_by_name, note: note || null, env: mode || 'live' })
                 .select().single();
             if (error) throw error;
             return data;
@@ -845,6 +854,23 @@
         },
         async update(patch) {
             const { error } = await client.from('id_card_settings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
+            if (error) throw error;
+        },
+    };
+
+    /* ---- Feature flags (System Admin toggles) ---------------- */
+    const featureFlags = {
+        async get() {
+            try {
+                const { data, error } = await client.from('feature_flags').select('*').eq('id', 1).maybeSingle();
+                if (error) throw error;
+                return data || { transfers_enabled: true, move_stock_enabled: true, id_cards_visible_to_director: false, director_id_card_template: 'classic' };
+            } catch (_) {
+                return { transfers_enabled: true, move_stock_enabled: true, id_cards_visible_to_director: false, director_id_card_template: 'classic' };
+            }
+        },
+        async update(patch) {
+            const { error } = await client.from('feature_flags').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
             if (error) throw error;
         },
     };
@@ -898,6 +924,8 @@
         stockMoves,
         media,
         idCardSettings,
+        featureFlags,
         devMode,
     });
 })();
+

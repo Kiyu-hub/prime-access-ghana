@@ -8,17 +8,16 @@ Everything you need to operate the platform. One page. Read top to bottom.
 
 - **Web address:** open the portal URL on any browser. To install it as an app, tap the browser's "Add to home screen" (mobile) or the install icon in the URL bar (desktop).
 - **Login:** company email + your password.
-- **Forgot password / locked out:** the Director or System Manager opens **Staff** → your name → set a new password.
+- **Forgot password / locked out:** ask the Director to open **Staff** → your name → set a new password.
 
 ---
 
-## 2 · The five roles
+## 2 · The roles
 
 | Role | Who they are | What they do |
 | --- | --- | --- |
-| **Director** | Owner | Runs the business: branches, staff, payment accounts, taxonomy, reports. Does **not** handle Drafts, Excel import, or Extract from image. |
-| **System Manager** | Tech / operations lead | Has everything the Director has, **plus** runs Drafts, Excel import, and Extract from image. |
-| **Branch Manager** | In charge of a branch (or several) | Full product control over their branch, can view warehouses, approves their branch's drafts. |
+| **Director** | Owner | Runs the business: branches, staff, payment accounts, taxonomy, reports. |
+| **Branch Manager** | In charge of a branch (or several) | Full product control over their branch, can view warehouses. |
 | **Warehouse Manager** | Runs a warehouse | Sees products and transfers — **never** sees prices or money. Verifies invoices when customers pick up. |
 | **Staff** | Showroom assistant | Records sales, requests transfers, browses the catalog. |
 
@@ -56,7 +55,7 @@ Stock moving between branches.
 - **All:** the full list.
 
 To **request** stock from another branch, open the product → **Request from another branch**.
-- The button only appears when (a) you have 2+ warehouses, (b) your own location is low/out of this item, AND (c) another branch actually has it in stock right now.
+- The button only appears when (a) your own location is low/out of this item, AND (b) another branch actually has it in stock right now.
 - Pick the source warehouse (only branches with stock show up).
 - **Payment status — "Not paid yet"**: the payment method/account fields disappear. The button reads "Pay first, then mark as Paid". Submit is blocked until you switch to **Paid**.
 - **Payment status — "Paid"**: pick the method, the account you paid to, tick the two confirmations, then submit.
@@ -64,73 +63,29 @@ To **request** stock from another branch, open the product → **Request from an
   - **Internal** — our courier brings it to your branch. No address needed.
   - **External** — going to a customer or 3rd party. Enter the **recipient phone** and **delivery address**.
 
-### Move Stock (Director / System Manager only)
-Direct stock transfer between warehouses — no payment, no request, no waiting. Use this for internal rebalancing.
-- Enter the item code, qty, source warehouse, destination warehouse.
-- The system atomically deducts from source, adds to destination.
-- A `MV-…` audit record is created in Product Transfers (status: received) and an Activity Log entry captures who moved what, when.
-- Movement totals appear on the Reports page as **Stock moved** + a **Top mover** card.
-
 ### Messages
-Chat between staff and the Director / System Manager. Use it for quick questions instead of WhatsApp.
+Chat between staff and the Director. Use it for quick questions instead of WhatsApp.
 
 ### Announcements
-Broadcast notices visible to all staff (except the super roles). Use for store-wide updates.
+Broadcast notices visible to all staff. Use for store-wide updates.
 
 ### Reports
-Live summary: inventory value, stock levels by branch, low stock, drafts pending, staff count, top categories, **Total sales** (count + GHS), **Stock moved** (units + transfers), **Top mover** (staff who's moved the most stock). Warehouse Managers see the same view with money hidden.
+Live summary of your scope: products, stock units, low stock, out of stock, your sales (or total sales if Director), top categories, top mover. Warehouse Managers see the same view with money hidden.
 
 ### Warehouse Stock  ← *the Warehouse Manager's home page*
 A dedicated card-grid view of warehouse inventory — same look-and-feel as the Showroom, but **no prices anywhere**. Quantity is the headline.
 - Top of the page shows four counters: total items, total units, low-stock count, out-of-stock count. They update live as you filter.
-- A **warehouse picker** appears when you have access to more than one (Director / System Manager / Branch Manager). Warehouse Managers are auto-scoped to the warehouse(s) they manage — no picker if there's only one.
+- A **warehouse picker** appears when you have access to more than one. Warehouse Managers are auto-scoped to the warehouse(s) they manage — no picker if there's only one.
 - Filter by **category**, **stock level** (in / low / out), or type to **search** by item code, description, color, supplier.
 - Each card shows the photo, item code, description, category/material/color pills, the **quantity** (big, prominent), and a tag for which warehouse it lives in.
 - Tap a card to open the full product detail. Money is hidden from Warehouse Managers throughout the app.
 
-### Warehouses (Director / System Manager / Branch Manager)
-Storage locations. Each warehouse is linked to one or more branches.
+### Warehouses (Director / Branch Manager)
+The warehouses your branches use and their assigned managers.
 - Click the **View stock** icon on a row to peek at the products inside that warehouse without leaving the page.
 - For the full grid view, use **Warehouse Stock** in the sidebar.
-- Director / System Manager: add, edit, delete, assign a warehouse manager.
+- Director: add, edit, delete, assign a warehouse manager. **A warehouse cannot be created without a manager** — create a Warehouse Manager staff first if none exist.
 - Branch Manager: view-only.
-
-### Media Library (System Manager)
-Bulk image storage for the whole portal.
-- **Upload images** picks many files at once and uploads them all to Cloudinary.
-- The gallery shows every image with filename + date + size.
-- **Copy URL** puts the image link in your clipboard so you can paste it anywhere (product image field, announcements, marketing).
-- **Delete** removes the library entry (the Cloudinary copy stays).
-- Search bar filters by filename or note.
-
-### Staff ID Cards (System Manager)
-Designs and prints branded company ID cards.
-- Pick a **template**: Classic (horizontal photo + info), Modern (vertical with photo header), or Minimal (text-led with brand bar).
-- Choose an **accent colour** (defaults to Clasikal navy/sky).
-- Toggle which fields appear: email, start date, QR code.
-- The QR encodes the full staff profile (name, role, branch, start date, issued date) for verification.
-- **Save settings** persists your design.
-- Tick **Enable printout** then click **Print all staff** — a new tab opens with one card per active staff and the browser print dialog. Each card uses the real photo (placeholder if none uploaded), real ID code, email, and start date.
-
-### Dev / Live mode (System Manager)
-A sandbox toggle in the sidebar so the System Manager can test without touching real data.
-- Sidebar pill: **Live** (real data, everyone sees) ↔ **Dev** (sandbox, only your browser sees).
-- Switching reloads the page so every cached list refetches with the new filter.
-- In Dev mode a top banner reads "DEV MODE · sandbox data only".
-- All new products, sales, transfers, logs, media you create in Dev stay in Dev.
-- **Reset demo data** wipes every Dev-mode row. Live data is never touched.
-- Branches, warehouses, staff are shared between modes (they rarely change).
-
-### Drafts (System Manager + Branch Manager)
-Products that came in via Excel import or OCR sit here until reviewed.
-- Open a draft → fill in any missing fields → **Publish** to move it into the live catalog.
-- Drafts missing required fields are flagged "needs attention".
-
-### Extract from image (System Manager)
-Paste or upload an inventory photo. The portal runs OCR locally in your browser, turns each line into a draft product, and drops them into the Drafts queue.
-
-### Import Excel (System Manager)
-Upload an `.xlsx` or `.csv` of products. Rows with complete data publish straight to the catalog. Incomplete rows land in Drafts.
 
 ### Payment Accounts (Director)
 MoMo / Bank / POS accounts the company uses. Mark accounts as **global** (every branch) or scope them to specific branches. These appear in the sale + transfer payment dropdowns.
@@ -142,9 +97,11 @@ Manage the shared lists used in the product form.
 Add and rename branches. Assign a Branch Manager.
 
 ### Staff (Director)
-Create staff, set role, set home branch, reset password. Each staff record now also takes an **optional profile photo** (uploaded to Cloudinary) and a **start date** — both used on the printed ID Card. Changing a role forces that user to sign in again.
+Create staff, set role, set home branch, reset password. Each staff record can include an **optional profile photo** and a **start date** (used on the printed ID card if enabled). The account creation time is filled in automatically.
 
-### Activity logs (Director + System Manager)
+Assignable roles: **Staff**, **Branch Manager**, **Warehouse Manager**. The Director account is the only one of its kind and isn't assignable from this form.
+
+### Activity logs (Director)
 Audit feed. Every sale, transfer, role change, product edit/delete, and account change is recorded with who did it and when.
 
 ---
@@ -161,15 +118,10 @@ Audit feed. Every sale, transfer, role change, product edit/delete, and account 
 2. Pick the source, pay to the shown account, mark **Paid**.
 3. Source branch ships → destination opens **Product Transfers → Incoming → Mark received**. Stock moves automatically.
 
-**Take a stock photo and turn it into products**
-1. System Manager → **Extract from image**.
-2. Paste / upload the photo. Wait for OCR.
-3. Confirm or edit lines → publish to Drafts.
-4. Drafts → review each → Publish.
-
-**Add 50 products at once**
-1. System Manager → **Import Excel**.
-2. Pick the file. Clean rows go straight in; messy rows land in Drafts.
+**Print a staff ID card** *(when Director access is enabled)*
+1. Open **Staff ID Cards** in the Director sidebar.
+2. Preview shows what the card will look like.
+3. Click **Print all staff** → printer-ready sheet with one card per staff member.
 
 ---
 
@@ -178,13 +130,12 @@ Audit feed. Every sale, transfer, role change, product edit/delete, and account 
 - **Unit price on a sale** is locked to the product's actual price — staff can't discount on the fly.
 - **Cash sales** require the cashier to tick "I have physically received the cash" before the invoice generates.
 - **Warehouse Manager** never sees prices or any money fields, anywhere in the portal.
-- **Director** does **not** see Drafts, Excel import, Extract from image, Media Library, or Staff ID Cards — those belong to the System Manager.
-- **Branch Manager** has read-only on Warehouses; only the Director / System Manager can add or edit them.
+- **Inventory Value** card is visible only to the Director.
+- **Branch Manager** has read-only on Warehouses; only the Director can add or edit them.
+- **A warehouse cannot exist without a warehouse manager** — the manager dropdown lists every staff with the Warehouse Manager role.
 - **Out-of-stock product transfer button** strictly checks: 2+ warehouses exist, another warehouse (different branch) actually holds the item with stock > 0, AND that warehouse isn't otherwise empty.
 - **Transfer "Not paid"**: payment method/account fields hide entirely. The form can't be submitted until you've actually paid and switched to "Paid".
 - **Internal vs external delivery** — internal goes to your branch, external requires a phone + address before submission.
-- **Move Stock** (direct, no payment) is restricted to Director and System Manager only. Every move is captured in Activity Logs and Reports.
-- **Dev mode** is invisible to everyone except the System Manager. Nothing created in Dev mode ever leaks to Live data.
 
 ---
 
@@ -194,17 +145,16 @@ Audit feed. Every sale, transfer, role change, product edit/delete, and account 
 | --- | --- |
 | Can't sign in | Confirm email is exact; ask the Director to reset your password. |
 | "Your role was changed — sign in again" | Sign in again. Your role was updated. |
-| Image won't upload | The file is over 5 MB or not a jpg/png/webp. |
+| Image won't upload | The file is over 5 MB or not a jpg / png / webp. |
 | Invoice PDF blank | Refresh the page once and try again. If still blank, change browser. |
 | Transfer says "no other branch has stock" | True — every other branch shows 0 of this item. Re-stock first. |
-| "Sales not enabled yet" toast | The Director hasn't run the latest database migration. |
+| Can't create a warehouse | You need at least one staff with the Warehouse Manager role first. Create them in Staff. |
 
 ---
 
 ## 7 · Who to call
 
-- **Day-to-day questions** → Director or System Manager.
-- **Technical / login / data issues** → System Manager.
+- **Day-to-day questions** → Director.
 - **Hardware / printer / network** → branch IT contact (out of scope for this portal).
 
 ---

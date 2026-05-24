@@ -258,7 +258,7 @@
            below re-show items per role. The existing .admin-only legacy
            class keeps working for "Director only" items. */
 
-        /* Legacy admin-only (Director + System Manager) */
+        /* Legacy admin-only (Director + System Admin) */
         .nav .admin-only { display: none; }
         .is-admin .nav .admin-only,
         body[data-role="admin"] .nav .admin-only,
@@ -267,25 +267,25 @@
         body[data-role="admin"] .nav__label.admin-only,
         body[data-role="system_manager"] .nav__label.admin-only { display: block; }
 
-        /* Data-ops pages routed to System Manager only (hidden from Director).
-           Import Excel, Extract from image, Drafts. Branch Manager still
-           gets Drafts via the override further below. */
-        .nav .sys-manager-only { display: none; }
-        body[data-role="system_manager"] .nav .sys-manager-only { display: flex; }
-        .nav__label.sys-manager-only { display: none; }
-        body[data-role="system_manager"] .nav__label.sys-manager-only { display: block; }
-        #importBtn { display: none; }
-        body[data-role="system_manager"] #importBtn { display: inline-flex; }
+        /* Data-ops pages routed to System Admin only.
+           Import Excel, Extract from image, Drafts, Media Library, ID Cards.
+           Also the dev/live mode pill in the sidebar footer. */
+        .nav .sys-manager-only,
+        .sb-mode.sys-manager-only,
+        #importBtn { display: none !important; }
+        body[data-role="system_manager"] .nav .sys-manager-only { display: flex !important; }
+        body[data-role="system_manager"] .sb-mode.sys-manager-only { display: block !important; }
+        body[data-role="system_manager"] #importBtn { display: inline-flex !important; }
+        .nav__label.sys-manager-only { display: none !important; }
+        body[data-role="system_manager"] .nav__label.sys-manager-only { display: block !important; }
 
         /* Announcements (.staff-only) — visible to everyone EXCEPT super-roles. */
         body.is-admin .nav .staff-only,
         body[data-role="admin"] .nav .staff-only,
         body[data-role="system_manager"] .nav .staff-only { display: none !important; }
 
-        /* Branch Manager: gets Drafts + Activity Logs + (read-only) Warehouses.
-           Add/Edit/Delete buttons inside the Warehouses view are hidden in
-           JS for non-admin viewers. */
-        body[data-role="branch_manager"] .nav a[data-view="drafts"],
+        /* Branch Manager: gets Activity Logs + (read-only) Warehouses.
+           Drafts is now restricted to System Admin only. */
         body[data-role="branch_manager"] .nav a[data-view="logs"],
         body[data-role="branch_manager"] .nav a[data-view="warehouses"] { display: flex !important; }
         body[data-role="branch_manager"] .nav__label.admin-only { display: block !important; }
@@ -300,6 +300,16 @@
            (Already hidden via .admin-only, this is just an explicit assert.) */
         body[data-role="staff"] .nav a[data-view="logs"],
         body[data-role="staff"] .nav a[data-view="drafts"] { display: none !important; }
+
+        /* Inventory value stat — visible to Director + System Admin only. */
+        .money-supers-only { display: none; }
+        body[data-role="admin"] .money-supers-only,
+        body[data-role="system_manager"] .money-supers-only { display: block; }
+        /* Warehouse Manager always loses money fields, regardless of super class.
+           The no-money-warehouse-mgr rule already wins thanks to !important. */
+
+        /* Stat colour variant for Out of Stock */
+        .stat.stat--out .stat__icon { background: linear-gradient(135deg, #FECACA, #F87171); color: #7F1D1D; }
 
         /* ---- Staff photo row (Add/Edit Staff modal) ----------- */
         .staff-photo-row { display: flex; gap: 14px; align-items: center; }
@@ -511,22 +521,34 @@
         .id-card[data-template="modern"] { display: flex; flex-direction: column; }
         .id-card[data-template="modern"] .id-card__photo-col {
             background: linear-gradient(135deg, var(--idc-accent, #0369A1) 0%, #06B6D4 100%);
-            padding: 14px;
+            padding: 12px 14px;
             color: #fff;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
+            flex-shrink: 0;
         }
         .id-card[data-template="modern"] .id-card__photo {
-            width: 56px; height: 56px; border-radius: 12px;
+            width: 44px; height: 44px; border-radius: 10px;
             overflow: hidden;
             background: rgba(255,255,255,0.18);
             border: 2px solid rgba(255,255,255,0.4);
             display: grid; place-items: center;
+            flex-shrink: 0;
         }
         .id-card[data-template="modern"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="modern"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; opacity: 0.85; }
-        .id-card[data-template="modern"] .id-card__info { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+        .id-card[data-template="modern"] .id-card__brand { font-size: 0.6rem; letter-spacing: 0.18em; opacity: 0.85; }
+        .id-card[data-template="modern"] .id-card__info {
+            padding: 10px 14px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .id-card[data-template="modern"] .id-card__bottom { margin-top: 4px; align-items: center; }
+        .id-card[data-template="modern"] .id-card__qr { width: 48px; height: 48px; flex-shrink: 0; }
 
         /* Template: Minimal — text-led */
         .id-card[data-template="minimal"] { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; border-top: 4px solid var(--idc-accent, #0369A1); }
@@ -540,6 +562,74 @@
         }
         .id-card[data-template="minimal"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
         .id-card[data-template="minimal"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; color: var(--c-ink-4); }
+
+        /* Template: Heritage — gold-trim portrait card, brand-led */
+        .id-card[data-template="heritage"] {
+            background: linear-gradient(155deg, #FFFBEB 0%, #FFF7E6 100%);
+            border: 1px solid #E0C68C;
+            box-shadow: 0 14px 32px rgba(120, 53, 15, 0.18);
+            padding: 14px 16px;
+            display: grid;
+            grid-template-columns: 96px 1fr;
+            gap: 14px;
+            position: relative;
+        }
+        .id-card[data-template="heritage"]::before {
+            content: "";
+            position: absolute; inset: 5px;
+            border: 1px solid rgba(180, 138, 50, 0.45);
+            border-radius: 11px;
+            pointer-events: none;
+        }
+        .id-card[data-template="heritage"] .id-card__photo-col {
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            position: relative; z-index: 1;
+        }
+        .id-card[data-template="heritage"] .id-card__photo {
+            width: 80px; height: 80px; border-radius: 50%;
+            border: 3px solid var(--idc-accent, #B45309);
+            background: #fff;
+            overflow: hidden;
+            display: grid; place-items: center;
+        }
+        .id-card[data-template="heritage"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="heritage"] .id-card__brand {
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 0.6rem; letter-spacing: 0.22em; color: #92400E; font-weight: 700; text-align: center;
+        }
+        .id-card[data-template="heritage"] .id-card__info { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; }
+        .id-card[data-template="heritage"] .id-card__role { color: #92400E; }
+
+        /* Template: Bold — accent-block hero with white knockout */
+        .id-card[data-template="bold"] {
+            background: var(--idc-accent, #0369A1);
+            color: #fff;
+            display: grid;
+            grid-template-rows: auto 1fr;
+            overflow: hidden;
+        }
+        .id-card[data-template="bold"] .id-card__photo-col {
+            background: rgba(255,255,255,0.08);
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px;
+        }
+        .id-card[data-template="bold"] .id-card__photo {
+            width: 48px; height: 48px; border-radius: 8px;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.4);
+            overflow: hidden; display: grid; place-items: center;
+        }
+        .id-card[data-template="bold"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="bold"] .id-card__brand {
+            font-size: 0.6rem; letter-spacing: 0.22em; opacity: 0.85; font-weight: 700;
+        }
+        .id-card[data-template="bold"] .id-card__info {
+            background: #fff;
+            color: var(--c-ink-1);
+            padding: 12px 16px;
+            display: flex; flex-direction: column; gap: 4px;
+        }
+        .id-card[data-template="bold"] .id-card__role { color: var(--idc-accent, #0369A1); }
 
         .id-card__name { font-family: var(--f-display, var(--f-sans)); font-size: 1rem; font-weight: 600; line-height: 1.2; color: var(--c-ink-1); }
         .id-card__role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--idc-accent, #0369A1); font-weight: 600; }
@@ -611,6 +701,34 @@
             width: 100%;
         }
         .sb-mode__action:hover { background: rgba(245, 158, 11, 0.3); }
+        .sb-mode__divider { height: 1px; background: rgba(255,255,255,0.08); margin: 10px 0 8px; }
+        .sb-mode__toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255,255,255,0.7);
+            font-size: 0.78rem;
+            padding: 4px 0;
+            cursor: pointer;
+        }
+        .sb-mode__toggle input { width: 14px; height: 14px; accent-color: var(--c-accent); }
+        .sb-mode__select {
+            background: rgba(0,0,0,0.25);
+            border: 1px solid rgba(255,255,255,0.12);
+            color: #fff;
+            font-size: 0.74rem;
+            padding: 3px 6px;
+            border-radius: 6px;
+        }
+
+        /* Feature gates: when System Admin turns these off via the sidebar,
+           the body gets a data-flag attribute and these CSS rules hide the
+           feature entirely (nav links, badges, in-detail buttons). */
+        body[data-flag-transfers="off"] .nav a[data-view="product-transfers"],
+        body[data-flag-transfers="off"] .nav a[data-view="verify-invoice"],
+        body[data-flag-transfers="off"] #pdetailRequestBtn,
+        body[data-flag-transfers="off"] #navTransfersBadge { display: none !important; }
+        body[data-flag-move-stock="off"] .nav a[data-view="move-stock"] { display: none !important; }
 
         /* Dev-mode banner: top of the page, only when toggle is on Dev */
         body[data-mode="dev"] .main::before {
@@ -631,7 +749,7 @@
 
         /* Warehouse Stock — dedicated showroom-style stock page.
            Visible to everyone with operational warehouse exposure:
-           Director, System Manager, Branch Manager, Warehouse Manager.
+           Director, System Admin, Branch Manager, Warehouse Manager.
            Plain Staff don't get it (they work from the Showroom view). */
         .nav .role-wh-stock { display: none; }
         body[data-role="admin"] .nav .role-wh-stock,
@@ -639,7 +757,7 @@
         body[data-role="branch_manager"] .nav .role-wh-stock,
         body[data-role="warehouse_manager"] .nav .role-wh-stock { display: flex; }
 
-        /* Move Stock — only Director + System Manager (super-roles). */
+        /* Move Stock — only Director + System Admin (super-roles). */
         .nav .role-move-stock { display: none; }
         body[data-role="admin"] .nav .role-move-stock,
         body[data-role="system_manager"] .nav .role-move-stock { display: flex; }
@@ -3853,7 +3971,7 @@
                 </a>
             </nav>
 
-            <!-- Dev/Live mode toggle (System Manager only) -->
+            <!-- Dev/Live mode toggle (System Admin only) -->
             <div class="sb-mode sys-manager-only" id="sbModeWrap">
                 <div class="sb-mode__row">
                     <span class="sb-mode__label">Mode</span>
@@ -3864,6 +3982,22 @@
                 </div>
                 <div class="sb-mode__hint" id="sbModeHint">Real data — visible to everyone.</div>
                 <button type="button" class="sb-mode__action" id="sbResetDevBtn" hidden>Reset demo data</button>
+                <button type="button" class="sb-mode__action" id="sbPublishDevBtn" hidden>Publish dev → live</button>
+                <div class="sb-mode__divider"></div>
+                <div class="sb-mode__label" style="margin-bottom:4px;">Features</div>
+                <label class="sb-mode__toggle"><input type="checkbox" id="ffTransfers" checked /><span>Product Transfers</span></label>
+                <label class="sb-mode__toggle"><input type="checkbox" id="ffMoveStock" checked /><span>Move Stock</span></label>
+                <label class="sb-mode__toggle"><input type="checkbox" id="ffIdCardsDirector" /><span>ID Cards for Director</span></label>
+                <div class="sb-mode__row" id="ffDirectorTplRow" style="margin-top:6px;display:none;">
+                    <span class="sb-mode__label">Director template</span>
+                    <select id="ffDirectorTpl" class="sb-mode__select">
+                        <option value="classic">Classic</option>
+                        <option value="modern">Modern</option>
+                        <option value="minimal">Minimal</option>
+                        <option value="heritage">Heritage</option>
+                        <option value="bold">Bold</option>
+                    </select>
+                </div>
             </div>
 
             <div class="sb-user">
@@ -3954,13 +4088,21 @@
                         <div class="stat__value" id="statLow">0</div>
                         <div class="stat__hint">&le; 5 units</div>
                     </div>
-                    <div class="stat stat--val reveal reveal--d4 no-money-warehouse-mgr">
+                    <div class="stat stat--val reveal reveal--d4 no-money-warehouse-mgr money-supers-only">
                         <div class="stat__icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                         </div>
                         <div class="stat__label">Inventory Value</div>
                         <div class="stat__value" id="statValue">GHS 0</div>
                         <div class="stat__hint">at retail price</div>
+                    </div>
+                    <div class="stat stat--out reveal reveal--d5">
+                        <div class="stat__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
+                        </div>
+                        <div class="stat__label">Out of Stock</div>
+                        <div class="stat__value" id="statOut">0</div>
+                        <div class="stat__hint">needs restocking</div>
                     </div>
                 </section>
 
@@ -4120,7 +4262,7 @@
                 <div class="topbar">
                     <div class="topbar__title">
                         <h1>Warehouses</h1>
-                        <p>Storage units linked to one or more branches. Source of truth for stock.</p>
+                        <p>The warehouses you manage and their assigned managers.</p>
                     </div>
                     <div class="topbar__actions">
                         <button class="btn btn--primary" id="addWarehouseBtn">
@@ -4484,7 +4626,7 @@
                 <div class="topbar">
                     <div class="topbar__title">
                         <h1>Move Stock</h1>
-                        <p>Director / System Manager only. Moves stock straight between warehouses — no payment, no request. Captured in Activity logs and Reports.</p>
+                        <p>Rebalance inventory directly between warehouses. Every move is recorded for the records.</p>
                     </div>
                 </div>
 
@@ -4521,7 +4663,7 @@
 
             <!-- ============================== -->
             <!--        MEDIA LIBRARY VIEW      -->
-            <!--   System Manager only.         -->
+            <!--   System Admin only.         -->
             <!-- ============================== -->
             <section class="view" id="view-media">
                 <div class="topbar">
@@ -4559,7 +4701,7 @@
 
             <!-- ============================== -->
             <!--       STAFF ID CARDS VIEW      -->
-            <!--   System Manager only.         -->
+            <!--   System Admin only.         -->
             <!-- ============================== -->
             <section class="view" id="view-id-cards">
                 <div class="topbar">
@@ -4581,6 +4723,8 @@
                                 <button type="button" data-template="classic" class="is-active">Classic</button>
                                 <button type="button" data-template="modern">Modern</button>
                                 <button type="button" data-template="minimal">Minimal</button>
+                                <button type="button" data-template="heritage">Heritage</button>
+                                <button type="button" data-template="bold">Bold</button>
                             </div>
                         </div>
                         <div class="idc-control">
@@ -4590,6 +4734,7 @@
                         <div class="idc-control">
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowEmail" checked /> Show email</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowStarted" checked /> Show start date</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranch" checked /> Show branch location</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowQr" checked /> Show QR code</label>
                         </div>
                         <div class="idc-control">
@@ -5363,8 +5508,6 @@
                             <option value="staff">Staff</option>
                             <option value="branch_manager">Branch Manager</option>
                             <option value="warehouse_manager">Warehouse Manager</option>
-                            <option value="admin">Director</option>
-                            <option value="system_manager">System Manager</option>
                         </select>
                     </div>
                     <div id="staffWarehouseField" style="display:none;">
@@ -5398,18 +5541,8 @@
                     </div>
                     <!-- Hidden compat for old form-submit code path -->
                     <input type="hidden" id="staffIsAdmin" />
-
-                    <div class="field--full" id="staffManagesAllField" style="display:none;">
-                        <label style="text-transform:none;letter-spacing:0;font-size:0.86rem;color:var(--c-ink-3);">Super-manager scope</label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;margin-top:6px;">
-                            <input type="checkbox" id="staffManagesAllBranches" style="width:18px;height:18px;accent-color:var(--c-accent);" />
-                            <span>Manages <strong>all branches</strong> (sees every branch's data)</span>
-                        </label>
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:0.9rem;color:var(--c-ink-2);font-weight:400;margin-top:6px;">
-                            <input type="checkbox" id="staffManagesAllWarehouses" style="width:18px;height:18px;accent-color:var(--c-accent);" />
-                            <span>Manages <strong>all warehouses</strong> (sees every warehouse's data)</span>
-                        </label>
-                    </div>
+                    <input type="hidden" id="staffManagesAllBranches" />
+                    <input type="hidden" id="staffManagesAllWarehouses" />
                 </div>
                 <footer class="modal__foot">
                     <button type="button" class="btn" data-close="staffModal">Cancel</button>
@@ -5774,3 +5907,4 @@
     </script>
 </body>
 </html>
+
