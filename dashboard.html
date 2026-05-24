@@ -371,7 +371,23 @@
         }
 
         /* ---- Media Library ------------------------------------- */
-        .media-toolbar { margin-bottom: 12px; display: flex; gap: 10px; }
+        .media-toolbar { margin-bottom: 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .media-enhance-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 14px;
+            background: linear-gradient(135deg, rgba(3,105,161,0.08), rgba(6,182,212,0.06));
+            border: 1px solid rgba(3,105,161,0.25);
+            border-radius: 999px;
+            font-size: 0.82rem;
+            color: var(--c-ink-2);
+            cursor: pointer;
+            transition: all var(--t-fast);
+        }
+        .media-enhance-toggle:hover { background: linear-gradient(135deg, rgba(3,105,161,0.14), rgba(6,182,212,0.10)); }
+        .media-enhance-toggle input { accent-color: var(--c-accent); width: 16px; height: 16px; }
+        .media-enhance-toggle strong { color: var(--c-accent); }
         .media-progress {
             margin-bottom: 12px;
             padding: 10px 14px;
@@ -4682,6 +4698,10 @@
 
                 <div class="media-toolbar">
                     <input type="search" id="mediaSearch" class="wh-stock-search" placeholder="Search filename or note…" autocomplete="off" />
+                    <label class="media-enhance-toggle" title="Run a free in-browser AI upscaler on every image before uploading. Adds 5–30s per image; downloads a ~5MB model once.">
+                        <input type="checkbox" id="mediaEnhance" />
+                        <span><strong>AI enhance</strong> · 2× sharper</span>
+                    </label>
                 </div>
 
                 <div class="media-progress" id="mediaProgress" hidden>
@@ -5892,6 +5912,9 @@
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
     <!-- QR generator (lightweight, no deps) used by Staff ID Cards -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+    <!-- TensorFlow.js + UpscalerJS — real browser-side AI image upscaling.
+         Loaded lazily on demand from Media Library so it doesn't slow boot. -->
+    <script>window.CH_UPSCALER_LOADED = false;</script>
     <script src="scripts/pdf-export.js"></script>
     <script src="scripts/dashboard.js"></script>
     <script src="scripts/install.js"></script>

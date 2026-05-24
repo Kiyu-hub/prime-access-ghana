@@ -6178,6 +6178,75 @@
         });
     }
 
+    /* AI image enhancer — lazy-loaded TensorFlow.js + UpscalerJS so the
+       ~5MB model download only happens when the user actually opts in.
+       Runs entirely in the browser; no API keys, no rate limits. */
+    let _upscalerInstance = null;
+    let _upscalerLoading = null;
+    async function ensureUpscaler(onStatus) {
+        if (_upscalerInstance) return _upscalerInstance;
+        if (_upscalerLoading) return _upscalerLoading;
+        _upscalerLoading = (async () => {
+            const log = (msg) => { try { onStatus && onStatus(msg); } catch (_) {} };
+            // Load TF.js core + WebGL backend, then UpscalerJS + an ESRGAN model.
+            // Order matters — UpscalerJS expects tf already on window.
+            async function injectScript(src) {
+                return new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = src; s.async = true;
+                    s.onload = resolve;
+                    s.onerror = () => reject(new Error('Failed to load ' + src));
+                    document.head.appendChild(s);
+                });
+            }
+            log('Loading AI model (one-time, ~5MB)…');
+            await injectScript('https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js');
+            await injectScript('https://cdn.jsdelivr.net/npm/upscaler@1.0.0-beta.18/dist/browser/umd/upscaler.min.js');
+            // Default model bundled with the UMD build is small enough; if a
+            // separate model package is required, swap in @upscalerjs/esrgan-slim
+            const Upscaler = window.Upscaler || (window.UpscalerJS && window.UpscalerJS.default);
+            if (!Upscaler) throw new Error('Upscaler global not found after load');
+            _upscalerInstance = new Upscaler();
+            log('Warming up model…');
+            // Force a tiny warm-up so the first real upscale is fast
+            try {
+                const warm = document.createElement('canvas');
+                warm.width = 32; warm.height = 32;
+                await _upscalerInstance.upscale(warm);
+            } catch (_) { /* warm-up failure is non-fatal */ }
+            log('AI model ready');
+            return _upscalerInstance;
+        })().catch((err) => {
+            _upscalerLoading = null;
+            throw err;
+        });
+        return _upscalerLoading;
+    }
+
+    /* Run a single File through the upscaler and return a new File of
+       the upscaled image. Falls back to the original if anything fails. */
+    async function enhanceImageFile(file, onStatus) {
+        try {
+            const upscaler = await ensureUpscaler(onStatus);
+            // UpscalerJS accepts an HTMLImageElement / canvas / tensor — load the file.
+            const url = URL.createObjectURL(file);
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+            onStatus && onStatus('Upscaling ' + file.name + '…');
+            const dataUrl = await upscaler.upscale(img, { output: 'base64' });
+            URL.revokeObjectURL(url);
+            // Convert the base64 dataURL back into a File so Cloudinary upload works.
+            const res = await fetch(dataUrl);
+            const blob = await res.blob();
+            const newName = file.name.replace(/(\.[^.]+)?$/, '-enhanced$1');
+            return new File([blob], newName, { type: blob.type || 'image/png' });
+        } catch (err) {
+            console.warn('AI enhance failed, falling back to original:', err);
+            return file;
+        }
+    }
+
     const _mediaUploadBtn = document.getElementById('mediaUploadBtn');
     const _mediaFileInput = document.getElementById('mediaFileInput');
     if (_mediaUploadBtn && _mediaFileInput) {
@@ -6189,28 +6258,37 @@
             const progress = $('#mediaProgress');
             const label    = $('#mediaProgressLabel');
             const fill     = $('#mediaProgressFill');
+            const enhance  = !!($('#mediaEnhance') && $('#mediaEnhance').checked);
             if (progress) progress.hidden = false;
             const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
             let done = 0, failed = 0;
-            for (const f of files) {
+            for (let i = 0; i < files.length; i++) {
+                const original = files[i];
                 try {
-                    if (label) label.textContent = `Uploading ${done + 1}/${files.length} · ${f.name}`;
-                    if (fill)  fill.style.width = (done / files.length * 100) + '%';
-                    const uploaded = await window.CH.cloudinary.upload(f);
+                    if (label) label.textContent = `Processing ${i + 1}/${files.length} · ${original.name}`;
+                    if (fill)  fill.style.width = (i / files.length * 100) + '%';
+                    let toUpload = original;
+                    if (enhance && /^image\//.test(original.type || '')) {
+                        toUpload = await enhanceImageFile(original, (msg) => {
+                            if (label) label.textContent = `${i + 1}/${files.length} · ${msg}`;
+                        });
+                    }
+                    const uploaded = await window.CH.cloudinary.upload(toUpload);
                     if (!uploaded || !uploaded.url) throw new Error('Cloudinary returned no URL');
                     await window.CH.media.add({
                         url: uploaded.url,
                         public_id: uploaded.public_id || null,
-                        filename: f.name,
-                        mime: f.type || null,
-                        bytes: uploaded.bytes || f.size || null,
+                        filename: toUpload.name,
+                        mime: toUpload.type || null,
+                        bytes: uploaded.bytes || toUpload.size || null,
                         uploaded_by: session.id,
                         uploaded_by_name: session.name,
+                        note: enhance ? 'AI-enhanced upload' : null,
                         mode,
                     });
                     done += 1;
                 } catch (err) {
-                    console.error('upload failed', f.name, err);
+                    console.error('upload failed', original.name, err);
                     failed += 1;
                 }
             }
