@@ -871,13 +871,24 @@
     /* ---- Feature flags (System Admin toggles) ---------------- */
     const featureFlags = {
         async get() {
+            const fallback = {
+                transfers_enabled: true,
+                move_stock_enabled: true,
+                id_cards_visible_to_director: false,
+                director_id_card_templates: 'classic',
+            };
             try {
                 const { data, error } = await client.from('feature_flags').select('*').eq('id', 1).maybeSingle();
                 if (error) throw error;
-                return data || { transfers_enabled: true, move_stock_enabled: true, id_cards_visible_to_director: false, director_id_card_template: 'classic' };
-            } catch (_) {
-                return { transfers_enabled: true, move_stock_enabled: true, id_cards_visible_to_director: false, director_id_card_template: 'classic' };
-            }
+                if (!data) return fallback;
+                // Forward-compat: if only the old single-value column came
+                // back (pre-fix-3 migration), surface it under the new key.
+                if (!data.director_id_card_templates && data.director_id_card_template) {
+                    data.director_id_card_templates = data.director_id_card_template;
+                }
+                if (!data.director_id_card_templates) data.director_id_card_templates = 'classic';
+                return data;
+            } catch (_) { return fallback; }
         },
         async update(patch) {
             const { error } = await client.from('feature_flags').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);

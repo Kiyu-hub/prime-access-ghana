@@ -5010,6 +5010,9 @@
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
     const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards'];
+    // Director gets everything except System Admin-only ops AND id-cards
+    // by default; id-cards is dynamically allowed for Director at runtime
+    // when the System Admin's feature flag is on (see switchView).
     const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards');
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
@@ -5071,6 +5074,14 @@
 
     function viewAllowedForRole(view, role) {
         const allowed = VIEWS_BY_ROLE[role] || VIEWS_BY_ROLE.staff;
+        // Director gets temporary access to id-cards when the System Admin
+        // has enabled it via the feature flag.
+        if (view === 'id-cards'
+            && role === 'admin'
+            && featureFlagsCache
+            && featureFlagsCache.id_cards_visible_to_director) {
+            return true;
+        }
         return allowed.includes(view);
     }
 
@@ -6395,7 +6406,16 @@
         const fields = [];
         if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field"><b>Email</b> ${escapeHtml(staffRow.email)}</div>`);
         if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
-        if (settings.show_branch_location && branchLocation) fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchLocation)}</div>`);
+        if (settings.show_branch_location) {
+            // Always render the row when the toggle is on. Prefer an explicit
+            // location, fall back to the branch name, then a dash. This way the
+            // field is never silently swallowed when location isn't set.
+            const branchDisplay = (branch && branch.location)
+                || staffRow.branch_location
+                || staffRow.branch_name
+                || '—';
+            fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchDisplay)}</div>`);
+        }
         // Branding: logo + wordmark sit together. Modern/Bold/Heritage put
         // the brand row beside the photo, Classic stacks it underneath.
         const brandBlock = `
@@ -6444,10 +6464,22 @@
     }
 
     async function loadIdCards() {
-        if (!isSuperRole()) {
-            toast('Staff ID Cards is for System Admin.', 'error');
+        const role = currentRole();
+        const isSysAdmin = role === 'system_manager';
+        const isDirector = role === 'admin';
+        if (!isSysAdmin && !isDirector) {
+            toast('Staff ID Cards is not available to you.', 'error');
             switchView('products');
             return;
+        }
+        // Director gates: the feature flag must be on, AND there must be at
+        // least one template the System Admin has shared with them.
+        if (isDirector) {
+            if (!featureFlagsCache || !featureFlagsCache.id_cards_visible_to_director) {
+                toast('This page is currently disabled.', 'info');
+                switchView('products');
+                return;
+            }
         }
         // Lazy-load settings + staff
         try {
@@ -6457,8 +6489,44 @@
         if (!staffList || staffList.length === 0) {
             try { staffList = await window.CH.staff.list(); } catch (_) {}
         }
-        // Reflect into controls
+        // For Director, restrict the visible templates to whatever the
+        // System Admin allowed. Hide buttons for any template that isn't
+        // in the allowed set. Also flip the active template to a permitted
+        // one if the saved setting is not allowed.
+        const allowed = isDirector ? directorTemplatesAsSet() : null;
         const tplBtns = $$('#idCardTemplatePicker button');
+        if (allowed) {
+            tplBtns.forEach((b) => {
+                b.style.display = allowed.has(b.dataset.template) ? '' : 'none';
+            });
+            if (!allowed.has(idCardSettings.template)) {
+                const first = Array.from(allowed)[0];
+                if (first) idCardSettings.template = first;
+            }
+            if (allowed.size === 0) {
+                toast('The System Admin has not shared any ID card templates with you yet.', 'info');
+                switchView('products');
+                return;
+            }
+        } else {
+            tplBtns.forEach((b) => { b.style.display = ''; });
+        }
+        // Hide System Admin-only controls (save settings, enable printout)
+        // when the Director is viewing — they pick + print but don't change settings.
+        const saveBtn  = $('#idCardSaveBtn');
+        const printBtn = $('#idCardPrintAllBtn');
+        const enableEl = $('#idCardEnablePrint');
+        const directorAccess = $('#idCardDirectorAccess');
+        if (isDirector) {
+            if (saveBtn)  saveBtn.style.display = 'none';
+            if (enableEl && enableEl.closest('.idc-control')) enableEl.closest('.idc-control').style.display = 'none';
+            if (directorAccess) directorAccess.style.display = 'none';
+        } else {
+            if (saveBtn)  saveBtn.style.display = '';
+            if (enableEl && enableEl.closest('.idc-control')) enableEl.closest('.idc-control').style.display = '';
+            if (directorAccess) directorAccess.style.display = '';
+        }
+        // Reflect template into the picker (use the now-possibly-adjusted value)
         tplBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.template === idCardSettings.template));
         const accEl = $('#idCardAccent');         if (accEl) accEl.value = idCardSettings.accent_color || '#0369A1';
         const emEl  = $('#idCardShowEmail');      if (emEl)  emEl.checked = !!idCardSettings.show_email;
@@ -6538,17 +6606,24 @@
     function applyFeatureFlagsUi() {
         document.body.dataset.flagTransfers  = featureFlagsCache.transfers_enabled  ? 'on' : 'off';
         document.body.dataset.flagMoveStock  = featureFlagsCache.move_stock_enabled ? 'on' : 'off';
+        document.body.dataset.flagIdCardsDirector = featureFlagsCache.id_cards_visible_to_director ? 'on' : 'off';
         // Reflect into the sidebar toggles if present
         const t = document.getElementById('ffTransfers');
         const m = document.getElementById('ffMoveStock');
         const i = document.getElementById('ffIdCardsDirector');
-        const tpl = document.getElementById('ffDirectorTpl');
-        const tplRow = document.getElementById('ffDirectorTplRow');
         if (t) t.checked = !!featureFlagsCache.transfers_enabled;
         if (m) m.checked = !!featureFlagsCache.move_stock_enabled;
         if (i) i.checked = !!featureFlagsCache.id_cards_visible_to_director;
-        if (tpl) tpl.value = featureFlagsCache.director_id_card_template || 'classic';
-        if (tplRow) tplRow.style.display = featureFlagsCache.id_cards_visible_to_director ? 'flex' : 'none';
+        // Director-templates multi-select (on the Staff ID Cards page).
+        const selected = directorTemplatesAsSet();
+        $$('#idCardDirectorTemplates input[data-director-tpl]').forEach((el) => {
+            el.checked = selected.has(el.dataset.directorTpl);
+        });
+    }
+
+    function directorTemplatesAsSet() {
+        const raw = (featureFlagsCache && featureFlagsCache.director_id_card_templates) || 'classic';
+        return new Set(String(raw).split(',').map((s) => s.trim()).filter(Boolean));
     }
 
     (async function loadFeatureFlagsOnBoot() {
@@ -6570,11 +6645,20 @@
         const t = document.getElementById('ffTransfers');
         const m = document.getElementById('ffMoveStock');
         const i = document.getElementById('ffIdCardsDirector');
-        const tpl = document.getElementById('ffDirectorTpl');
-        if (t)   t.addEventListener('change', () => save({ transfers_enabled: t.checked }));
-        if (m)   m.addEventListener('change', () => save({ move_stock_enabled: m.checked }));
-        if (i)   i.addEventListener('change', () => save({ id_cards_visible_to_director: i.checked }));
-        if (tpl) tpl.addEventListener('change', () => save({ director_id_card_template: tpl.value }));
+        if (t) t.addEventListener('change', () => save({ transfers_enabled: t.checked }));
+        if (m) m.addEventListener('change', () => save({ move_stock_enabled: m.checked }));
+        if (i) i.addEventListener('change', () => save({ id_cards_visible_to_director: i.checked }));
+        // Director-templates multi-select on the Staff ID Cards page.
+        const tplHost = document.getElementById('idCardDirectorTemplates');
+        if (tplHost) tplHost.addEventListener('change', (e) => {
+            const cb = e.target.closest('input[data-director-tpl]');
+            if (!cb) return;
+            const set = directorTemplatesAsSet();
+            if (cb.checked) set.add(cb.dataset.directorTpl);
+            else set.delete(cb.dataset.directorTpl);
+            const csv = Array.from(set).join(',');
+            save({ director_id_card_templates: csv });
+        });
     }
     wireFeatureFlagToggles();
 

@@ -491,6 +491,35 @@
         }
         .idc-toggle input { width: 16px; height: 16px; accent-color: var(--c-accent); }
         .idc-hint { font-size: 0.74rem; color: var(--c-ink-5); margin-top: 6px; line-height: 1.4; }
+        .idc-director-access {
+            margin-top: 18px;
+            padding-top: 16px;
+            border-top: 1px dashed var(--c-line);
+        }
+        .idc-director-access__head { margin-bottom: 8px; }
+        .idc-director-access__head label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: var(--c-ink-3);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 4px;
+        }
+        .idc-director-access__head small {
+            display: block;
+            font-size: 0.74rem;
+            color: var(--c-ink-5);
+            line-height: 1.4;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .idc-director-templates {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 12px;
+            margin-top: 6px;
+        }
         .idc-preview-wrap { display: flex; flex-direction: column; align-items: flex-start; }
         .idc-preview-label {
             font-size: 0.72rem;
@@ -884,6 +913,10 @@
         .nav .role-move-stock { display: none; }
         body[data-role="admin"] .nav .role-move-stock,
         body[data-role="system_manager"] .nav .role-move-stock { display: flex; }
+
+        /* Staff ID Cards — System Admin always; Director when the
+           System Admin's "ID Cards in Director dashboard" flag is on. */
+        body[data-role="admin"][data-flag-id-cards-director="on"] .nav a.role-id-cards { display: flex !important; }
 
         /* ---- Phase 3 role gating: Sales / Purchases / Verify ---- */
         /* Default: hide */
@@ -4055,7 +4088,7 @@
                     </svg>
                     <span>Staff</span>
                 </a>
-                <a class="sys-manager-only" data-view="id-cards">
+                <a class="role-id-cards sys-manager-only" data-view="id-cards">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="5" width="18" height="14" rx="2"/>
                         <circle cx="9" cy="11" r="2.2"/>
@@ -4110,17 +4143,8 @@
                 <div class="sb-mode__label" style="margin-bottom:4px;">Features</div>
                 <label class="sb-mode__toggle"><input type="checkbox" id="ffTransfers" checked /><span>Product Transfers</span></label>
                 <label class="sb-mode__toggle"><input type="checkbox" id="ffMoveStock" checked /><span>Move Stock</span></label>
-                <label class="sb-mode__toggle"><input type="checkbox" id="ffIdCardsDirector" /><span>ID Cards for Director</span></label>
-                <div class="sb-mode__row" id="ffDirectorTplRow" style="margin-top:6px;display:none;">
-                    <span class="sb-mode__label">Director template</span>
-                    <select id="ffDirectorTpl" class="sb-mode__select">
-                        <option value="classic">Classic</option>
-                        <option value="modern">Modern</option>
-                        <option value="minimal">Minimal</option>
-                        <option value="heritage">Heritage</option>
-                        <option value="bold">Bold</option>
-                    </select>
-                </div>
+                <label class="sb-mode__toggle"><input type="checkbox" id="ffIdCardsDirector" /><span>ID Cards in Director dashboard</span></label>
+                <div class="sb-mode__hint" id="ffIdCardsHint" style="margin-top:4px;">Open <b>Staff ID Cards</b> to pick which templates the Director sees.</div>
             </div>
 
             <div class="sb-user">
@@ -4867,6 +4891,21 @@
                         <div class="idc-control">
                             <label class="idc-toggle"><input type="checkbox" id="idCardEnablePrint" /> Enable printout for all staff</label>
                             <div class="idc-hint">When ticked, the <b>Print all staff</b> button is unlocked and every active staff gets a card.</div>
+                        </div>
+
+                        <!-- Director access — only visible to System Admin -->
+                        <div class="idc-control idc-director-access sys-manager-only" id="idCardDirectorAccess">
+                            <div class="idc-director-access__head">
+                                <label>Director access</label>
+                                <small>Pick the templates the Director can choose from in their own dashboard. Untick all to hide the page entirely.</small>
+                            </div>
+                            <div class="idc-director-templates" id="idCardDirectorTemplates">
+                                <label class="idc-toggle"><input type="checkbox" data-director-tpl="classic"  /> Classic</label>
+                                <label class="idc-toggle"><input type="checkbox" data-director-tpl="modern"   /> Modern</label>
+                                <label class="idc-toggle"><input type="checkbox" data-director-tpl="minimal"  /> Minimal</label>
+                                <label class="idc-toggle"><input type="checkbox" data-director-tpl="heritage" /> Heritage</label>
+                                <label class="idc-toggle"><input type="checkbox" data-director-tpl="bold"     /> Crest</label>
+                            </div>
                         </div>
                     </aside>
 
