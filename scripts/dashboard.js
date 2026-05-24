@@ -1812,11 +1812,15 @@
 
         const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director', 'system_manager': 'System Manager' })[r] || (r || 'Staff');
         const rolePillClass = (r) => (r === 'admin' || r === 'system_manager') ? 'pill pill--admin' : 'pill';
-        els.staffBody.innerHTML = staffList.map((s) => `
+        els.staffBody.innerHTML = staffList.map((s) => {
+            const avatarInner = s.image_url
+                ? `<img src="${escapeAttr(s.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />`
+                : initials(s.name);
+            return `
             <tr>
                 <td>
                     <div style="display:flex;align-items:center;gap:10px;">
-                        <span class="avatar" style="width:32px;height:32px;font-size:0.78rem;">${initials(s.name)}</span>
+                        <span class="avatar" style="width:32px;height:32px;font-size:0.78rem;${s.image_url ? 'background:transparent;padding:0;' : ''}">${avatarInner}</span>
                         <strong style="color:var(--c-ink-2);">${escapeHtml(s.name)}</strong>
                     </div>
                 </td>
@@ -1836,7 +1840,8 @@
                     </div>
                 </td>
             </tr>
-        `).join('');
+        `;
+        }).join('');
     }
 
     els.staffBody.addEventListener('click', (e) => {

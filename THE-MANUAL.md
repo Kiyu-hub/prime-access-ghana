@@ -95,6 +95,32 @@ Storage locations. Each warehouse is linked to one or more branches.
 - Director / System Manager: add, edit, delete, assign a warehouse manager.
 - Branch Manager: view-only.
 
+### Media Library (System Manager)
+Bulk image storage for the whole portal.
+- **Upload images** picks many files at once and uploads them all to Cloudinary.
+- The gallery shows every image with filename + date + size.
+- **Copy URL** puts the image link in your clipboard so you can paste it anywhere (product image field, announcements, marketing).
+- **Delete** removes the library entry (the Cloudinary copy stays).
+- Search bar filters by filename or note.
+
+### Staff ID Cards (System Manager)
+Designs and prints branded company ID cards.
+- Pick a **template**: Classic (horizontal photo + info), Modern (vertical with photo header), or Minimal (text-led with brand bar).
+- Choose an **accent colour** (defaults to Clasikal navy/sky).
+- Toggle which fields appear: email, start date, QR code.
+- The QR encodes the full staff profile (name, role, branch, start date, issued date) for verification.
+- **Save settings** persists your design.
+- Tick **Enable printout** then click **Print all staff** — a new tab opens with one card per active staff and the browser print dialog. Each card uses the real photo (placeholder if none uploaded), real ID code, email, and start date.
+
+### Dev / Live mode (System Manager)
+A sandbox toggle in the sidebar so the System Manager can test without touching real data.
+- Sidebar pill: **Live** (real data, everyone sees) ↔ **Dev** (sandbox, only your browser sees).
+- Switching reloads the page so every cached list refetches with the new filter.
+- In Dev mode a top banner reads "DEV MODE · sandbox data only".
+- All new products, sales, transfers, logs, media you create in Dev stay in Dev.
+- **Reset demo data** wipes every Dev-mode row. Live data is never touched.
+- Branches, warehouses, staff are shared between modes (they rarely change).
+
 ### Drafts (System Manager + Branch Manager)
 Products that came in via Excel import or OCR sit here until reviewed.
 - Open a draft → fill in any missing fields → **Publish** to move it into the live catalog.
@@ -116,7 +142,7 @@ Manage the shared lists used in the product form.
 Add and rename branches. Assign a Branch Manager.
 
 ### Staff (Director)
-Create staff, set role, set home branch, reset password. Changing a role forces that user to sign in again.
+Create staff, set role, set home branch, reset password. Each staff record now also takes an **optional profile photo** (uploaded to Cloudinary) and a **start date** — both used on the printed ID Card. Changing a role forces that user to sign in again.
 
 ### Activity logs (Director + System Manager)
 Audit feed. Every sale, transfer, role change, product edit/delete, and account change is recorded with who did it and when.
@@ -150,11 +176,15 @@ Audit feed. Every sale, transfer, role change, product edit/delete, and account 
 ## 5 · Things that are intentionally restricted
 
 - **Unit price on a sale** is locked to the product's actual price — staff can't discount on the fly.
-- **Warehouse Manager** never sees prices or any money fields.
-- **Director** does **not** see Drafts, Excel import, or Extract from image — those belong to the System Manager.
+- **Cash sales** require the cashier to tick "I have physically received the cash" before the invoice generates.
+- **Warehouse Manager** never sees prices or any money fields, anywhere in the portal.
+- **Director** does **not** see Drafts, Excel import, Extract from image, Media Library, or Staff ID Cards — those belong to the System Manager.
 - **Branch Manager** has read-only on Warehouses; only the Director / System Manager can add or edit them.
-- **Out-of-stock product transfer button** only appears if another branch actually has the item right now.
+- **Out-of-stock product transfer button** strictly checks: 2+ warehouses exist, another warehouse (different branch) actually holds the item with stock > 0, AND that warehouse isn't otherwise empty.
+- **Transfer "Not paid"**: payment method/account fields hide entirely. The form can't be submitted until you've actually paid and switched to "Paid".
 - **Internal vs external delivery** — internal goes to your branch, external requires a phone + address before submission.
+- **Move Stock** (direct, no payment) is restricted to Director and System Manager only. Every move is captured in Activity Logs and Reports.
+- **Dev mode** is invisible to everyone except the System Manager. Nothing created in Dev mode ever leaks to Live data.
 
 ---
 
