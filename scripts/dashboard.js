@@ -6396,10 +6396,19 @@
         if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field"><b>Email</b> ${escapeHtml(staffRow.email)}</div>`);
         if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
         if (settings.show_branch_location && branchLocation) fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchLocation)}</div>`);
+        // Branding: logo + wordmark sit together. Modern/Bold/Heritage put
+        // the brand row beside the photo, Classic stacks it underneath.
+        const brandBlock = `
+            <div class="id-card__brand-row">
+                <div class="id-card__logo"><img src="assets/logo.png?v=4" alt="" /></div>
+                <div class="id-card__brand">CLASIKAL HOMES</div>
+            </div>`;
+        const stackedBrand = `<div class="id-card__brand">CLASIKAL HOMES</div>`;
+        const isStacked = settings.template === 'classic' || settings.template === 'heritage' || settings.template === 'minimal';
         return `<div class="id-card" data-template="${settings.template}" style="--idc-accent:${escapeAttr(acc)};">
             <div class="id-card__photo-col">
                 <div class="id-card__photo">${photoInner}</div>
-                <div class="id-card__brand">CLASIKAL HOMES</div>
+                ${isStacked ? stackedBrand : brandBlock}
             </div>
             <div class="id-card__info">
                 <div class="id-card__role">${escapeHtml(role)}</div>
@@ -6416,14 +6425,20 @@
     function renderIdCardPreview() {
         const host = $('#idCardPreview');
         if (!host) return;
-        const list = (staffList || []).filter((s) => s.name);
-        const subject = list[0] || {
+        // Prefer a real, printable subject: skip System Admin (infra account
+        // that doesn't get cards printed) and prefer staff who actually have
+        // a staff_code assigned. Fall back to a synthetic preview if needed.
+        const list = (staffList || []).filter((s) => s.name && s.role !== 'system_manager');
+        const withCode = list.find((s) => s.staff_code);
+        const subject = withCode || list[0] || {
             id: 'preview',
             name: 'Ama Yeboah',
             email: 'ama@clasikalhomes.com',
             role: 'staff',
             staff_code: 'CH-A-007',
             started_at: '2025-08-01',
+            branch_name: 'Adabraka Showroom',
+            branch_location: 'Adabraka, Accra',
         };
         host.innerHTML = buildIdCardHtml(subject, idCardSettings);
     }
@@ -6502,7 +6517,9 @@
                 toast('Enable printout first.', 'error');
                 return;
             }
-            const list = (staffList || []).filter((s) => s.name);
+            // System Admin users are infrastructure accounts — they don't
+            // get printed cards. Everyone else with a name is printable.
+            const list = (staffList || []).filter((s) => s.name && s.role !== 'system_manager');
             if (list.length === 0) { toast('No staff to print.', 'error'); return; }
             const cards = list.map((s) => buildIdCardHtml(s, idCardSettings)).join('');
             const win = window.open('', '_blank');

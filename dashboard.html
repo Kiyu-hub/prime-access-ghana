@@ -501,166 +501,273 @@
         }
         .idc-card-host { display: flex; flex-wrap: wrap; gap: 16px; }
 
-        /* The card itself — used in preview and in printed sheets */
+        /* ============================================================
+           Staff ID Cards — all 5 templates strictly on Clasikal brand:
+             Navy   #0B1F3F  (primary)
+             Sky    #0369A1  (accent, picked via colour input)
+             Ink    var(--c-ink-1)
+             Bone   #F8FAFC  (off-white surface)
+           No gold, no plain primary blocks. Every card breathes.
+           ============================================================ */
         .id-card {
-            width: 320px;
-            height: 200px;
+            --idc-navy: #0B1F3F;
+            --idc-bone: #F8FAFC;
+            width: 340px;
+            height: 215px;
             border-radius: 14px;
             overflow: hidden;
             position: relative;
             background: #fff;
-            box-shadow: 0 10px 30px rgba(11, 31, 63, 0.15);
+            box-shadow: 0 14px 36px rgba(11, 31, 63, 0.18);
             font-family: var(--f-sans);
             color: var(--c-ink-1);
         }
-        /* Template: Classic — horizontal split */
-        .id-card[data-template="classic"] { display: grid; grid-template-columns: 110px 1fr; }
+        .id-card * { box-sizing: border-box; }
+        .id-card__logo {
+            width: 28px; height: 28px;
+            background: #fff;
+            border-radius: 5px;
+            padding: 3px;
+            display: grid; place-items: center;
+            flex-shrink: 0;
+        }
+        .id-card__logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .id-card__brand-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* ---- Template: Classic — horizontal split, navy left ---- */
+        .id-card[data-template="classic"] { display: grid; grid-template-columns: 118px 1fr; }
         .id-card[data-template="classic"] .id-card__photo-col {
-            background: linear-gradient(160deg, var(--idc-accent, #0369A1) 0%, #0B1F3F 100%);
-            display: grid;
-            place-items: center;
-            padding: 14px;
+            background: linear-gradient(165deg, var(--idc-navy) 0%, var(--idc-accent, #0369A1) 100%);
             color: #fff;
+            padding: 14px 12px;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
         }
         .id-card[data-template="classic"] .id-card__photo {
-            width: 80px; height: 80px; border-radius: 50%;
-            background: rgba(255,255,255,0.18);
-            border: 2px solid rgba(255,255,255,0.4);
+            width: 78px; height: 78px; border-radius: 50%;
+            background: rgba(255,255,255,0.16);
+            border: 2px solid rgba(255,255,255,0.55);
             overflow: hidden;
             display: grid; place-items: center;
         }
         .id-card[data-template="classic"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="classic"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; opacity: 0.85; margin-top: 10px; text-align: center; }
-        .id-card[data-template="classic"] .id-card__info { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+        .id-card[data-template="classic"] .id-card__brand {
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 0.64rem; letter-spacing: 0.22em; opacity: 0.92; text-align: center; line-height: 1.2;
+        }
+        .id-card[data-template="classic"] .id-card__info {
+            padding: 12px 14px 12px 16px;
+            display: flex; flex-direction: column; gap: 4px;
+            min-width: 0; overflow: hidden;
+        }
 
-        /* Template: Modern — vertical with photo header */
+        /* ---- Template: Modern — top-bar header, content below ---- */
         .id-card[data-template="modern"] { display: flex; flex-direction: column; }
         .id-card[data-template="modern"] .id-card__photo-col {
-            background: linear-gradient(135deg, var(--idc-accent, #0369A1) 0%, #06B6D4 100%);
-            padding: 12px 14px;
+            background: linear-gradient(105deg, var(--idc-navy) 0%, var(--idc-accent, #0369A1) 100%);
+            padding: 10px 14px;
             color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 10px;
+            display: flex; align-items: center; gap: 10px;
             flex-shrink: 0;
+            height: 56px;
         }
         .id-card[data-template="modern"] .id-card__photo {
-            width: 44px; height: 44px; border-radius: 10px;
+            width: 40px; height: 40px; border-radius: 50%;
             overflow: hidden;
             background: rgba(255,255,255,0.18);
-            border: 2px solid rgba(255,255,255,0.4);
-            display: grid; place-items: center;
-            flex-shrink: 0;
+            border: 2px solid rgba(255,255,255,0.55);
+            display: grid; place-items: center; flex-shrink: 0;
         }
         .id-card[data-template="modern"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="modern"] .id-card__brand { font-size: 0.6rem; letter-spacing: 0.18em; opacity: 0.85; }
-        .id-card[data-template="modern"] .id-card__info {
-            padding: 10px 14px 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            flex: 1;
-            min-height: 0;
-            overflow: hidden;
+        .id-card[data-template="modern"] .id-card__brand {
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 0.66rem; letter-spacing: 0.22em; line-height: 1.1; font-weight: 600;
         }
-        .id-card[data-template="modern"] .id-card__bottom { margin-top: 4px; align-items: center; }
-        .id-card[data-template="modern"] .id-card__qr { width: 48px; height: 48px; flex-shrink: 0; }
+        .id-card[data-template="modern"] .id-card__info {
+            padding: 12px 14px 12px;
+            display: flex; flex-direction: column; gap: 3px;
+            flex: 1; min-height: 0; overflow: hidden;
+        }
 
-        /* Template: Minimal — text-led */
-        .id-card[data-template="minimal"] { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; border-top: 4px solid var(--idc-accent, #0369A1); }
-        .id-card[data-template="minimal"] .id-card__photo-col { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+        /* ---- Template: Minimal — text-led with sky accent rule ---- */
+        .id-card[data-template="minimal"] {
+            padding: 16px 18px;
+            display: flex; flex-direction: column; gap: 4px;
+            border-top: 4px solid var(--idc-accent, #0369A1);
+            background: #fff;
+        }
+        .id-card[data-template="minimal"] .id-card__photo-col {
+            display: flex; gap: 10px; align-items: center; margin-bottom: 4px;
+        }
         .id-card[data-template="minimal"] .id-card__photo {
-            width: 44px; height: 44px; border-radius: 50%;
-            background: var(--c-bg); border: 1px solid var(--c-line);
+            width: 42px; height: 42px; border-radius: 50%;
+            background: var(--idc-bone); border: 1px solid #E2E8F0;
             overflow: hidden;
             display: grid; place-items: center;
-            color: var(--c-ink-5);
+            color: #94A3B8;
+            flex-shrink: 0;
         }
         .id-card[data-template="minimal"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="minimal"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; color: var(--c-ink-4); }
+        .id-card[data-template="minimal"] .id-card__brand {
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 0.66rem; letter-spacing: 0.22em; color: var(--idc-navy); font-weight: 600;
+        }
 
-        /* Template: Heritage — gold-trim portrait card, brand-led */
+        /* ---- Template: Heritage — editorial; bone canvas, navy serif name,
+                                    thin sky rule. No gold anywhere. ---- */
         .id-card[data-template="heritage"] {
-            background: linear-gradient(155deg, #FFFBEB 0%, #FFF7E6 100%);
-            border: 1px solid #E0C68C;
-            box-shadow: 0 14px 32px rgba(120, 53, 15, 0.18);
-            padding: 14px 16px;
+            background: var(--idc-bone);
+            border: 1px solid #E2E8F0;
+            box-shadow: 0 14px 32px rgba(11, 31, 63, 0.14);
+            padding: 16px;
             display: grid;
-            grid-template-columns: 96px 1fr;
-            gap: 14px;
+            grid-template-columns: 92px 1fr;
+            gap: 16px;
             position: relative;
         }
         .id-card[data-template="heritage"]::before {
             content: "";
-            position: absolute; inset: 5px;
-            border: 1px solid rgba(180, 138, 50, 0.45);
-            border-radius: 11px;
-            pointer-events: none;
+            position: absolute;
+            left: 16px; right: 16px; top: 76px;
+            height: 1px;
+            background: var(--idc-accent, #0369A1);
+            opacity: 0.4;
         }
         .id-card[data-template="heritage"] .id-card__photo-col {
-            display: flex; flex-direction: column; align-items: center; gap: 6px;
-            position: relative; z-index: 1;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
         .id-card[data-template="heritage"] .id-card__photo {
-            width: 80px; height: 80px; border-radius: 50%;
-            border: 3px solid var(--idc-accent, #B45309);
+            width: 78px; height: 78px; border-radius: 50%;
             background: #fff;
+            border: 3px solid var(--idc-navy);
             overflow: hidden;
             display: grid; place-items: center;
+            box-shadow: 0 4px 12px rgba(11, 31, 63, 0.14);
         }
         .id-card[data-template="heritage"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
         .id-card[data-template="heritage"] .id-card__brand {
             font-family: var(--f-display, var(--f-sans));
-            font-size: 0.6rem; letter-spacing: 0.22em; color: #92400E; font-weight: 700; text-align: center;
+            font-size: 0.6rem; letter-spacing: 0.24em; color: var(--idc-navy); font-weight: 700; text-align: center; line-height: 1.2;
         }
-        .id-card[data-template="heritage"] .id-card__info { display: flex; flex-direction: column; gap: 4px; position: relative; z-index: 1; }
-        .id-card[data-template="heritage"] .id-card__role { color: #92400E; }
+        .id-card[data-template="heritage"] .id-card__info {
+            display: flex; flex-direction: column; gap: 4px; min-width: 0;
+        }
+        .id-card[data-template="heritage"] .id-card__name {
+            font-family: var(--f-display, var(--f-sans));
+            color: var(--idc-navy);
+            font-style: normal;
+        }
 
-        /* Template: Bold — accent-block hero with white knockout */
+        /* ---- Template: Crest — navy card, white info chip, sky accent
+                                 (replaces old "Bold" flat block) ---- */
         .id-card[data-template="bold"] {
-            background: var(--idc-accent, #0369A1);
+            background: linear-gradient(135deg, var(--idc-navy) 0%, #0F2A55 100%);
             color: #fff;
             display: grid;
-            grid-template-rows: auto 1fr;
+            grid-template-rows: 70px 1fr;
             overflow: hidden;
+            position: relative;
+        }
+        .id-card[data-template="bold"]::after {
+            content: "";
+            position: absolute;
+            left: 0; right: 0; top: 70px;
+            height: 3px;
+            background: var(--idc-accent, #0369A1);
         }
         .id-card[data-template="bold"] .id-card__photo-col {
-            background: rgba(255,255,255,0.08);
-            display: flex; align-items: center; gap: 12px;
-            padding: 12px 16px;
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 16px;
         }
         .id-card[data-template="bold"] .id-card__photo {
-            width: 48px; height: 48px; border-radius: 8px;
-            background: rgba(255,255,255,0.2);
-            border: 2px solid rgba(255,255,255,0.4);
-            overflow: hidden; display: grid; place-items: center;
+            width: 46px; height: 46px; border-radius: 10px;
+            background: rgba(255,255,255,0.18);
+            border: 2px solid rgba(255,255,255,0.55);
+            overflow: hidden; display: grid; place-items: center; flex-shrink: 0;
         }
         .id-card[data-template="bold"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
         .id-card[data-template="bold"] .id-card__brand {
-            font-size: 0.6rem; letter-spacing: 0.22em; opacity: 0.85; font-weight: 700;
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 0.66rem; letter-spacing: 0.22em; opacity: 0.92; font-weight: 600;
         }
         .id-card[data-template="bold"] .id-card__info {
             background: #fff;
             color: var(--c-ink-1);
             padding: 12px 16px;
-            display: flex; flex-direction: column; gap: 4px;
+            display: flex; flex-direction: column; gap: 3px;
+            margin: 0;
         }
         .id-card[data-template="bold"] .id-card__role { color: var(--idc-accent, #0369A1); }
 
-        .id-card__name { font-family: var(--f-display, var(--f-sans)); font-size: 1rem; font-weight: 600; line-height: 1.2; color: var(--c-ink-1); }
-        .id-card__role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--idc-accent, #0369A1); font-weight: 600; }
-        .id-card__field { font-size: 0.72rem; color: var(--c-ink-3); display: flex; gap: 6px; }
-        .id-card__field b { color: var(--c-ink-2); font-weight: 600; }
-        .id-card__bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; gap: 10px; }
-        .id-card__qr {
-            width: 56px; height: 56px;
-            background: #fff; border: 1px solid var(--c-line);
-            border-radius: 6px;
-            display: grid; place-items: center;
+        /* ---- Shared inner typography ----------------------------- */
+        .id-card__name {
+            font-family: var(--f-display, var(--f-sans));
+            font-size: 1.02rem;
+            font-weight: 600;
+            line-height: 1.2;
+            color: var(--c-ink-1);
+            white-space: nowrap;
             overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .id-card__qr img, .id-card__qr canvas, .id-card__qr svg { width: 100%; height: 100%; }
-        .id-card__staff-id { font-family: var(--f-mono); font-size: 0.72rem; color: var(--c-ink-3); }
+        .id-card__role {
+            font-size: 0.66rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--idc-accent, #0369A1);
+            font-weight: 700;
+        }
+        .id-card__field {
+            font-size: 0.7rem;
+            color: var(--c-ink-3);
+            display: flex;
+            gap: 6px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .id-card__field b {
+            color: var(--c-ink-2);
+            font-weight: 600;
+            min-width: 46px;
+        }
+        .id-card__bottom {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-top: auto;
+            gap: 10px;
+            padding-top: 4px;
+        }
+        .id-card__qr {
+            width: 50px; height: 50px;
+            background: #fff;
+            border: 1px solid #E2E8F0;
+            border-radius: 6px;
+            padding: 2px;
+            display: grid;
+            place-items: center;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+        .id-card__qr svg,
+        .id-card__qr img,
+        .id-card__qr canvas { width: 100%; height: 100%; display: block; }
+        .id-card__staff-id {
+            font-family: var(--f-mono);
+            font-size: 0.74rem;
+            color: var(--c-ink-2);
+            letter-spacing: 0.04em;
+            font-weight: 600;
+        }
+
+        /* Heritage uses a small variant of the bottom row (already
+           wrapped in .id-card__info, so the QR + ID sit cleanly). */
+        .id-card[data-template="minimal"] .id-card__qr { width: 44px; height: 44px; }
+        .id-card[data-template="modern"] .id-card__qr  { width: 44px; height: 44px; }
 
         /* Print-all sheet (opens in a new window) */
         @media print {
