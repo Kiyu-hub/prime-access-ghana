@@ -764,10 +764,20 @@
                 p_payment_confirmed: !!payment_confirmed,
                 p_note: note || null,
                 p_items: items,
+                p_env: currentMode(),
             });
             if (error) throw error;
-            // Returns an array with one row (id, code, invoice_code)
-            return Array.isArray(data) ? data[0] : data;
+            // The RPC returns one row. After the fix-2 migration the columns
+            // are (order_id, order_code, order_invoice_code); pre-fix it was
+            // (id, code, invoice_code). Normalise so the caller always sees
+            // the old { id, code, invoice_code } shape.
+            const row = Array.isArray(data) ? data[0] : data;
+            if (!row) return row;
+            return {
+                id:           row.id           ?? row.order_id,
+                code:         row.code         ?? row.order_code,
+                invoice_code: row.invoice_code ?? row.order_invoice_code,
+            };
         },
         async validateInvoice(code, warehouseId, validatorId, validatorCode) {
             const { data, error } = await client.rpc('validate_invoice_code', {
