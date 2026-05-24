@@ -159,13 +159,32 @@
             const { error } = await client.from('staff').update({ warehouse_id: warehouse_id || null }).eq('id', id);
             if (error) throw error;
         },
+        // Phase 4 — patch optional fields that don't go through the RPC
+        // (image_url, started_at, staff_code).
+        async patch(id, patch) {
+            const payload = {};
+            if (patch.image_url !== undefined)  payload.image_url = patch.image_url || null;
+            if (patch.started_at !== undefined) payload.started_at = patch.started_at || null;
+            if (patch.staff_code !== undefined) payload.staff_code = patch.staff_code || null;
+            if (Object.keys(payload).length === 0) return;
+            const { error } = await client.from('staff').update(payload).eq('id', id);
+            if (error) throw error;
+        },
     };
+
+    // Mode helper — reads localStorage. Defined early so every data
+    // module below can call it. The toggle UI lives in dashboard.js.
+    function currentMode() {
+        try { return localStorage.getItem('ch_mode') === 'dev' ? 'dev' : 'live'; }
+        catch (_) { return 'live'; }
+    }
 
     /* ---- products -------------------------------------------- */
     const products = {
         async list(branch_id) {
             let q = client.from('products').select('*').order('created_at', { ascending: false });
             if (branch_id) q = q.eq('branch_id', branch_id);
+            q = q.eq('mode', currentMode());
             const { data, error } = await q;
             if (error) throw error;
             return data || [];
@@ -181,6 +200,9 @@
                 delete payload.added_by;
                 delete payload.added_by_name;
             }
+            // Tag new rows with the current mode (defaults to 'live' on the
+            // server too — this just makes the intent explicit on inserts).
+            if (!isUpdate && !payload.mode) payload.mode = currentMode();
 
             const q = isUpdate
                 ? client.from('products').update(payload).eq('id', row.id).select().single()
@@ -286,9 +308,10 @@
     /* ---- reports --------------------------------------------- */
     const reports = {
         async overview() {
+            const mode = currentMode();
             const [branchesRes, productsRes, staffRes] = await Promise.all([
                 client.from('branches').select('*'),
-                client.from('products').select('id,item_no,description,branch_id,price,stock,category,material,color,supplier,image_url,created_at'),
+                client.from('products').select('id,item_no,description,branch_id,price,stock,category,material,color,supplier,image_url,created_at').eq('mode', mode),
                 client.from('staff_view').select('id,branch_id,is_admin'),
             ]);
             if (branchesRes.error)  throw branchesRes.error;
@@ -308,6 +331,7 @@
             const { data, error } = await client.from('product_logs')
                 .select('*')
                 .order('created_at', { ascending: false })
+                .eq('mode', currentMode())
                 .limit(limit);
             if (error) throw error;
             return data || [];
@@ -315,6 +339,7 @@
         async record({ product_id, item_no, action, branch_id, branch_name, staff_id, staff_name, note }) {
             const { error } = await client.from('product_logs').insert({
                 product_id: product_id || null,
+                mode: currentMode(),
                 item_no: item_no || null,
                 action,
                 branch_id: branch_id || null,
@@ -529,7 +554,8 @@
         async list(opts = {}) {
             let q = client.from('product_transfer_requests')
                 .select('*, from_warehouse:from_warehouse_id(name,code), to_warehouse:to_warehouse_id(name,code), from_branch:from_branch_id(name), to_branch:to_branch_id(name)')
-                .order('requested_at', { ascending: false });
+                .order('requested_at', { ascending: false })
+                .eq('mode', currentMode());
             if (opts.status)            q = q.eq('status', opts.status);
             if (opts.fromWarehouseId)   q = q.eq('from_warehouse_id', opts.fromWarehouseId);
             if (opts.toBranchId)        q = q.eq('to_branch_id', opts.toBranchId);
@@ -544,7 +570,8 @@
         async countPending({ toBranchId, fromWarehouseId } = {}) {
             let q = client.from('product_transfer_requests')
                 .select('id', { count: 'exact', head: true })
-                .eq('status', 'pending');
+                .eq('status', 'pending')
+                .eq('mode', currentMode());
             if (toBranchId)     q = q.eq('to_branch_id', toBranchId);
             if (fromWarehouseId) q = q.eq('from_warehouse_id', fromWarehouseId);
             const { count, error } = await q;
@@ -560,13 +587,14 @@
                 .select('id, warehouse_id, stock, branch_id, warehouses:warehouse_id(name,code), branches:branch_id(name)')
                 .eq('item_no', itemNo)
                 .gt('stock', 0)
-                .eq('is_draft', false);
+                .eq('is_draft', false)
+                .eq('mode', currentMode());
             if (error) throw error;
             return (data || []).filter((p) => p.warehouse_id && p.warehouse_id !== excludeWarehouseId);
         },
 
         // Create a new transfer request (calls the SECURITY DEFINER RPC).
-        async create({ product_id, from_warehouse_id, qty, payment_method, payment_provider, delivery_type, requester_staff_id, requester_code, note }) {
+        async create({ product_id, from_warehouse_id, qty, payment_method, payment_provider, delivery_type, requester_staff_id, requester_code, note, delivery_address, delivery_recipient_name, delivery_recipient_phone }) {
             const { data, error } = await client.rpc('request_product_transfer', {
                 p_product_id: product_id,
                 p_from_warehouse_id: from_warehouse_id,
@@ -577,6 +605,9 @@
                 p_requester_staff_id: requester_staff_id,
                 p_requester_code: requester_code || null,
                 p_note: note || null,
+                p_delivery_address: delivery_address || null,
+                p_delivery_recipient_name: delivery_recipient_name || null,
+                p_delivery_recipient_phone: delivery_recipient_phone || null,
             });
             if (error) throw error;
             return data; // the PT-... code
@@ -681,7 +712,8 @@
         async list(opts = {}) {
             let q = client.from('customer_orders')
                 .select('*, branch:branch_id(name), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code)')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .eq('mode', currentMode());
             if (opts.branchId)       q = q.eq('branch_id', opts.branchId);
             if (opts.warehouseId)    q = q.eq('warehouse_id', opts.warehouseId);
             if (opts.status)         q = q.eq('status', opts.status);
@@ -763,6 +795,84 @@
         },
     };
 
+    /* ---- direct stock move (Phase 4 — super-role only) ------- */
+    const stockMoves = {
+        // Move stock from one warehouse to another without going through
+        // the request/receive flow. Server-side enforces super-role.
+        async direct({ item_no, from_warehouse_id, to_warehouse_id, qty, by_staff_id, note, mode }) {
+            const { data, error } = await client.rpc('move_stock_direct', {
+                p_item_no: item_no,
+                p_from_warehouse_id: from_warehouse_id,
+                p_to_warehouse_id: to_warehouse_id,
+                p_qty: qty,
+                p_by_staff_id: by_staff_id,
+                p_note: note || null,
+                p_mode: mode || 'live',
+            });
+            if (error) throw error;
+            return data; // MV-... code
+        },
+    };
+
+    /* ---- media library (Phase 4) ---------------------------- */
+    const media = {
+        async list(mode) {
+            let q = client.from('media_assets').select('*').order('created_at', { ascending: false });
+            if (mode) q = q.eq('mode', mode);
+            const { data, error } = await q;
+            if (error) throw error;
+            return data || [];
+        },
+        async add({ url, public_id, filename, mime, bytes, uploaded_by, uploaded_by_name, note, mode }) {
+            const { data, error } = await client.from('media_assets')
+                .insert({ url, public_id, filename, mime, bytes, uploaded_by, uploaded_by_name, note: note || null, mode: mode || 'live' })
+                .select().single();
+            if (error) throw error;
+            return data;
+        },
+        async remove(id) {
+            const { error } = await client.from('media_assets').delete().eq('id', id);
+            if (error) throw error;
+        },
+    };
+
+    /* ---- ID card settings (Phase 4) ------------------------- */
+    const idCardSettings = {
+        async get() {
+            const { data, error } = await client.from('id_card_settings').select('*').eq('id', 1).single();
+            if (error) throw error;
+            return data;
+        },
+        async update(patch) {
+            const { error } = await client.from('id_card_settings').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', 1);
+            if (error) throw error;
+        },
+    };
+
+    /* ---- dev/live mode helpers (Phase 4) -------------------- */
+    const devMode = {
+        // The mode toggle lives in localStorage so it survives reloads,
+        // is per-browser (so two sysadmins can be in different modes),
+        // and the client uses it to filter reads + tag writes.
+        KEY: 'ch_mode',
+        current() {
+            try { return localStorage.getItem(devMode.KEY) === 'dev' ? 'dev' : 'live'; }
+            catch (_) { return 'live'; }
+        },
+        set(mode) {
+            try { localStorage.setItem(devMode.KEY, mode === 'dev' ? 'dev' : 'live'); }
+            catch (_) {}
+        },
+        async resetDevData() {
+            const { error } = await client.rpc('reset_dev_data');
+            if (error) throw error;
+        },
+        async publishProduct(productId) {
+            const { error } = await client.rpc('publish_dev_product', { p_id: productId });
+            if (error) throw error;
+        },
+    };
+
     /* ---- expose ---------------------------------------------- */
     window.CH = Object.assign(window.CH || {}, {
         supabase: client,
@@ -785,5 +895,9 @@
         productTransfers,
         paymentAccounts,
         customerOrders,
+        stockMoves,
+        media,
+        idCardSettings,
+        devMode,
     });
 })();

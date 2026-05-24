@@ -289,8 +289,12 @@
         if (view === 'announcements') loadAnnouncements();
         if (view === 'taxonomy') loadTaxonomy();
         if (view === 'warehouses') loadWarehouses();
+        if (view === 'warehouse-stock') loadWarehouseStock();
         if (view === 'payment-accounts') loadPaymentAccounts();
         if (view === 'product-transfers') loadProductTransfers();
+        if (view === 'move-stock') initMoveStock();
+        if (view === 'media') loadMediaLibrary();
+        if (view === 'id-cards') loadIdCards();
         if (view === 'new-sale') initNewSale();
         if (view === 'purchases') loadPurchases();
         if (view === 'verify-invoice') initVerifyInvoice();
@@ -412,7 +416,7 @@
                 <td>${escapeHtml(p.material || '—')}</td>
                 <td>${escapeHtml(p.color || '—')}</td>
                 <td>${dims}</td>
-                <td><strong>${CURRENCY} ${Number(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
+                <td class="no-money-warehouse-mgr"><strong>${CURRENCY} ${Number(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></td>
                 <td><span class="pill ${stockClass}">${stockLabel}</span></td>
                 <td>
                     <div class="row-actions">
@@ -1166,7 +1170,7 @@
 
     async function loadWarehouses() {
         const role = currentRole();
-        if (role !== 'admin' && role !== 'branch_manager') return;
+        if (role !== 'admin' && role !== 'system_manager' && role !== 'branch_manager') return;
         try {
             const all = await window.CH.warehouses.listWithBranches();
             // Branch Manager: scope to warehouses linked to any branch they manage
@@ -1211,11 +1215,15 @@
             // Only Director gets edit/delete actions; Branch Manager view-only.
             const actionsHtml = isAdmin
                 ? `<div class="row-actions">
+                        <button type="button" class="icon-btn" data-stock-wh="${w.id}" title="View stock" aria-label="View stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18"/><path d="M8 4h8"/></svg></button>
                         <button class="icon-btn" data-edit-wh="${w.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                         <button class="icon-btn icon-btn--danger" data-del-wh="${w.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg></button>
                     </div>`
-                : '<span style="color:var(--c-ink-5);font-size:0.78rem;">view only</span>';
-            return `<tr>
+                : `<div class="row-actions">
+                        <button type="button" class="icon-btn" data-stock-wh="${w.id}" title="View stock" aria-label="View stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18"/><path d="M8 4h8"/></svg></button>
+                        <span style="color:var(--c-ink-5);font-size:0.78rem;">view only</span>
+                    </div>`;
+            return `<tr data-wh-row="${w.id}">
                 <td><strong style="color:var(--c-ink-2);">${escapeHtml(w.name)}</strong></td>
                 <td><span class="itemno">${escapeHtml(w.code)}</span></td>
                 <td>${escapeHtml(w.location || '—')}</td>
@@ -1224,6 +1232,65 @@
                 <td>${actionsHtml}</td>
             </tr>`;
         }).join('');
+    }
+
+    // ---- Warehouse stock panel (qty only, no money) ------------
+    async function toggleWarehouseStockPanel(warehouseId) {
+        if (!WAREHOUSE_ELS.body) return;
+        // Toggle off if already open
+        const existing = WAREHOUSE_ELS.body.querySelector(`tr[data-wh-stock-for="${warehouseId}"]`);
+        if (existing) { existing.remove(); return; }
+        // Anchor below the matching row
+        const anchor = WAREHOUSE_ELS.body.querySelector(`tr[data-wh-row="${warehouseId}"]`);
+        if (!anchor) return;
+        const panel = document.createElement('tr');
+        panel.dataset.whStockFor = warehouseId;
+        panel.innerHTML = `<td colspan="6" class="wh-stock-cell"><div class="wh-stock-panel"><div class="wh-stock-panel__hd">Loading stock…</div></div></td>`;
+        anchor.after(panel);
+        try {
+            const list = await window.CH.products.list(null);
+            const rows = (list || [])
+                .filter((p) => p.warehouse_id === warehouseId && !p.is_draft)
+                .sort((a, b) => (a.item_no || '').localeCompare(b.item_no || ''));
+            const wh = warehousesCache.find((x) => x.id === warehouseId) || {};
+            const total = rows.reduce((s, r) => s + (Number(r.stock) || 0), 0);
+            const skuCount = rows.length;
+            const body = panel.querySelector('.wh-stock-panel');
+            if (rows.length === 0) {
+                body.innerHTML = `
+                    <div class="wh-stock-panel__hd">${escapeHtml(wh.name || 'Warehouse')} · stock</div>
+                    <div class="wh-stock-panel__empty">No products in this warehouse yet.</div>`;
+                return;
+            }
+            const itemsHtml = rows.map((r) => {
+                const stock = Number(r.stock) || 0;
+                const stockClass = stock <= 0 ? 'pill--stock-out'
+                    : stock <= LOW_STOCK_THRESHOLD ? 'pill--stock-low'
+                    : 'pill--stock-good';
+                return `<tr>
+                    <td><span class="itemno">${escapeHtml(r.item_no || '—')}</span></td>
+                    <td>${escapeHtml(r.description || '—')}</td>
+                    <td>${r.category ? '<span class="pill">' + escapeHtml(r.category) + '</span>' : ''}</td>
+                    <td><span class="pill ${stockClass}">${stock}</span></td>
+                </tr>`;
+            }).join('');
+            body.innerHTML = `
+                <div class="wh-stock-panel__hd">${escapeHtml(wh.name || 'Warehouse')} · stock</div>
+                <div class="wh-stock-panel__stats">
+                    <span><b>${skuCount}</b> ${skuCount === 1 ? 'item' : 'items'}</span>
+                    <span><b>${total}</b> total units</span>
+                </div>
+                <div class="wh-stock-panel__table">
+                    <table class="tbl wh-stock-tbl">
+                        <thead><tr><th>Item no.</th><th>Description</th><th>Category</th><th>Quantity</th></tr></thead>
+                        <tbody>${itemsHtml}</tbody>
+                    </table>
+                </div>`;
+        } catch (err) {
+            console.error(err);
+            const body = panel.querySelector('.wh-stock-panel');
+            if (body) body.innerHTML = '<div class="wh-stock-panel__empty">Could not load stock.</div>';
+        }
     }
 
     function populateWarehouseManagerSelect() {
@@ -1287,6 +1354,8 @@
 
     if (WAREHOUSE_ELS.addBtn) WAREHOUSE_ELS.addBtn.addEventListener('click', openWarehouseAdd);
     if (WAREHOUSE_ELS.body) WAREHOUSE_ELS.body.addEventListener('click', (e) => {
+        const stockBtn = e.target.closest('[data-stock-wh]');
+        if (stockBtn) { toggleWarehouseStockPanel(stockBtn.dataset.stockWh); return; }
         const editBtn = e.target.closest('[data-edit-wh]');
         if (editBtn) { openWarehouseEdit(editBtn.dataset.editWh); return; }
         const delBtn = e.target.closest('[data-del-wh]');
@@ -1823,6 +1892,9 @@
         if (a2) a2.checked = false;
         const codeField = $('#staffCodeDisplay');
         if (codeField) codeField.value = '(generated on save)';
+        // Reset photo + start date
+        setStaffPhotoUi('');
+        const sd = $('#staffStartedAt'); if (sd) sd.value = '';
         els.staffModal.classList.add('is-open');
         setTimeout(() => els.staffName.focus(), 50);
     }
@@ -1855,8 +1927,58 @@
         if (a2) a2.checked = !!s.manages_all_warehouses;
         const codeField = $('#staffCodeDisplay');
         if (codeField) codeField.value = s.staff_code || '(not yet generated)';
+        // Photo + start date
+        setStaffPhotoUi(s.image_url || '');
+        const sd = $('#staffStartedAt');
+        if (sd) sd.value = s.started_at ? String(s.started_at).slice(0, 10) : '';
         els.staffModal.classList.add('is-open');
     }
+
+    /* Staff photo helpers ------------------------------------- */
+    function setStaffPhotoUi(url) {
+        const thumb = $('#staffPhotoThumb');
+        const hidden = $('#staffPhotoUrl');
+        const clearBtn = $('#staffPhotoClearBtn');
+        if (hidden) hidden.value = url || '';
+        if (thumb) {
+            if (url) {
+                thumb.innerHTML = `<img src="${escapeAttr(url)}" alt="" loading="lazy" />`;
+            } else {
+                thumb.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6"/></svg>';
+            }
+        }
+        if (clearBtn) clearBtn.style.display = url ? 'inline-flex' : 'none';
+    }
+
+    (function wireStaffPhoto() {
+        const btn = document.getElementById('staffPhotoUploadBtn');
+        const input = document.getElementById('staffPhotoInput');
+        const clear = document.getElementById('staffPhotoClearBtn');
+        if (btn && input) {
+            btn.addEventListener('click', () => input.click());
+            input.addEventListener('change', async (e) => {
+                const f = e.target.files && e.target.files[0];
+                e.target.value = '';
+                if (!f) return;
+                if (f.size > 5 * 1024 * 1024) { toast('Photo is over 5 MB — pick a smaller one.', 'error'); return; }
+                btn.disabled = true; btn.textContent = 'Uploading…';
+                try {
+                    const uploaded = await window.CH.cloudinary.upload(f);
+                    if (uploaded && uploaded.url) {
+                        setStaffPhotoUi(uploaded.url);
+                        toast('Photo uploaded', 'success');
+                    } else {
+                        toast('Upload failed.', 'error');
+                    }
+                } catch (err) {
+                    toast(err.message || 'Upload failed.', 'error');
+                } finally {
+                    btn.disabled = false; btn.textContent = 'Upload photo';
+                }
+            });
+        }
+        if (clear) clear.addEventListener('click', () => setStaffPhotoUi(''));
+    })();
 
     if (els.staffRole) els.staffRole.addEventListener('change', () => {
         toggleStaffWarehouseField();
@@ -1912,6 +2034,12 @@
             // Warehouse assignment is independent of the create_staff/update_staff RPC
             if (staffId) {
                 try { await window.CH.staff.setWarehouse(staffId, warehouseId); } catch (e) { console.warn('setWarehouse failed:', e); }
+                // Optional photo + start date — only patch fields the form has values for.
+                try {
+                    const photoUrl = ($('#staffPhotoUrl') && $('#staffPhotoUrl').value) || null;
+                    const startedAt = ($('#staffStartedAt') && $('#staffStartedAt').value) || null;
+                    await window.CH.staff.patch(staffId, { image_url: photoUrl, started_at: startedAt });
+                } catch (e) { console.warn('staff.patch failed:', e); }
             }
             els.staffModal.classList.remove('is-open');
             await loadStaff();
@@ -2072,6 +2200,203 @@
 
     [els.showroomBranchFilter, els.showroomCategoryFilter, els.showroomStockFilter].forEach((el) => {
         el.addEventListener('change', renderShowroom);
+    });
+
+    /* ============================================================
+       WAREHOUSE STOCK — dedicated showroom-style view
+       Same card chassis as the Showroom, but money is intentionally
+       absent everywhere; quantity is the headline. Warehouse Manager
+       is auto-scoped to the warehouses they manage.
+       ============================================================ */
+    let whStockProducts = [];
+    let whStockWarehouses = [];
+
+    async function loadWarehouseStock() {
+        const role = currentRole();
+        const heading = $('#whStockHeading');
+        try {
+            // Pull fresh products + warehouses each time so quantities are live
+            const [prods, whs] = await Promise.all([
+                window.CH.products.list(null),
+                (window.CH.warehouses && window.CH.warehouses.listWithBranches)
+                    ? window.CH.warehouses.listWithBranches()
+                    : Promise.resolve(warehousesCache || []),
+            ]);
+            // Scope warehouses by role:
+            //   - Warehouse Manager: just the warehouses they manage
+            //   - Branch Manager:    warehouses linked to their managed branches
+            //   - Director / SysMgr: every warehouse
+            let allowed = whs;
+            if (role === 'warehouse_manager') {
+                const scope = getManagedWarehouseIds();
+                if (scope !== 'ALL') {
+                    const allowedSet = new Set(scope);
+                    allowed = whs.filter((w) => allowedSet.has(w.id));
+                }
+            } else if (role === 'branch_manager') {
+                const branchScope = getManagedBranchIds();
+                if (branchScope !== 'ALL') {
+                    const branchSet = new Set(branchScope);
+                    allowed = whs.filter((w) => (w.branches || []).some((b) => branchSet.has(b.branch_id)));
+                }
+            }
+            whStockWarehouses = allowed;
+            const allowedIds = new Set(allowed.map((w) => w.id));
+            whStockProducts = (prods || []).filter((p) =>
+                !p.is_draft
+                && p.warehouse_id
+                && allowedIds.has(p.warehouse_id)
+            );
+            // Heading copy adapts to who's looking
+            if (heading) {
+                if (role === 'warehouse_manager') {
+                    const names = allowed.map((w) => w.name).filter(Boolean);
+                    heading.textContent = names.length
+                        ? 'Live count of every item in ' + (names.length === 1 ? names[0] : names.length + ' warehouses')
+                        : 'You don\'t manage any warehouse yet — ask the Director.';
+                } else if (role === 'branch_manager') {
+                    heading.textContent = 'Warehouses linked to your branch(es).';
+                } else {
+                    heading.textContent = 'Live count of every item across every warehouse.';
+                }
+            }
+            // Populate warehouse picker
+            const whSel = $('#whStockWarehouseFilter');
+            if (whSel) {
+                const label = role === 'warehouse_manager' ? 'All my warehouses' : 'All warehouses';
+                whSel.innerHTML = ['<option value="">' + label + '</option>']
+                    .concat(allowed.map((w) => `<option value="${w.id}">${escapeHtml(w.name)}${w.code ? ' · ' + escapeHtml(w.code) : ''}</option>`))
+                    .join('');
+                whSel.value = '';
+                // Hide picker when there's only one warehouse to choose from
+                whSel.style.display = allowed.length <= 1 ? 'none' : '';
+            }
+            // Populate category filter from observed values + taxonomy
+            const catSel = $('#whStockCategoryFilter');
+            if (catSel) {
+                const seen = new Set(whStockProducts.map((p) => (p.category || '').trim()).filter(Boolean));
+                (categoriesCache || []).forEach((c) => { if (c && c.name) seen.add(c.name); });
+                const opts = ['<option value="">All categories</option>']
+                    .concat(Array.from(seen).sort().map((c) => `<option value="${escapeAttr(c)}">${escapeHtml(c)}</option>`));
+                const current = catSel.value;
+                catSel.innerHTML = opts.join('');
+                if (current) catSel.value = current;
+            }
+            renderWarehouseStock();
+        } catch (err) {
+            console.error(err);
+            toast('Could not load warehouse stock: ' + (err.message || 'unknown error'), 'error');
+        }
+    }
+
+    function renderWarehouseStock() {
+        const grid = $('#whStockGrid');
+        const empty = $('#whStockEmpty');
+        if (!grid || !empty) return;
+        const whFilter = ($('#whStockWarehouseFilter') && $('#whStockWarehouseFilter').value) || '';
+        const catFilter = ($('#whStockCategoryFilter') && $('#whStockCategoryFilter').value) || '';
+        const lvlFilter = ($('#whStockLevelFilter') && $('#whStockLevelFilter').value) || '';
+        const q = (($('#whStockSearch') && $('#whStockSearch').value) || '').trim().toLowerCase();
+
+        const whById = new Map(whStockWarehouses.map((w) => [w.id, w]));
+
+        const list = whStockProducts.filter((p) => {
+            if (whFilter && p.warehouse_id !== whFilter) return false;
+            if (catFilter && (p.category || '') !== catFilter) return false;
+            const stock = Number(p.stock) || 0;
+            if (lvlFilter === 'in'  && stock <= LOW_STOCK_THRESHOLD) return false;
+            if (lvlFilter === 'low' && !(stock > 0 && stock <= LOW_STOCK_THRESHOLD)) return false;
+            if (lvlFilter === 'out' && stock !== 0) return false;
+            if (q) {
+                const hay = [p.item_no, p.description, p.material, p.color, p.supplier, p.category]
+                    .filter(Boolean).join(' ').toLowerCase();
+                if (!hay.includes(q)) return false;
+            }
+            return true;
+        });
+
+        // Totals reflect the current FILTER set (not the global pool) so the
+        // numbers always match what's visible below.
+        let skuCount = list.length;
+        let unitCount = 0;
+        let lowCount = 0;
+        let outCount = 0;
+        list.forEach((p) => {
+            const s = Number(p.stock) || 0;
+            unitCount += s;
+            if (s === 0) outCount += 1;
+            else if (s <= LOW_STOCK_THRESHOLD) lowCount += 1;
+        });
+        const sku  = $('#whStockSkuCount');   if (sku)  sku.textContent  = skuCount.toLocaleString();
+        const unit = $('#whStockUnitCount');  if (unit) unit.textContent = unitCount.toLocaleString();
+        const low  = $('#whStockLowCount');   if (low)  low.textContent  = lowCount.toLocaleString();
+        const out  = $('#whStockOutCount');   if (out)  out.textContent  = outCount.toLocaleString();
+
+        if (list.length === 0) {
+            grid.innerHTML = '';
+            empty.style.display = 'block';
+            return;
+        }
+        empty.style.display = 'none';
+        grid.innerHTML = list.map((p) => {
+            const stock = Number(p.stock) || 0;
+            const stockClass = stock <= 0 ? 'pill--stock-out'
+                : stock <= LOW_STOCK_THRESHOLD ? 'pill--stock-low'
+                : 'pill--stock-good';
+            const stockBadge = stock <= 0 ? 'Out' : stock + ' left';
+            const media = p.image_url
+                ? `<img src="${escapeAttr(p.image_url)}" alt="" loading="lazy" />`
+                : `<div class="prod-card__media--ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
+            const wh = whById.get(p.warehouse_id);
+            const whTag = wh ? `<span class="prod-card__wh-tag" title="${escapeAttr(wh.name || '')}">${escapeHtml(wh.name || '')}</span>` : '';
+            return `<article class="prod-card" data-wh-stock-id="${p.id}">
+                <div class="prod-card__media">
+                    ${media}
+                    <span class="pill ${stockClass} prod-card__stock">${stockBadge}</span>
+                </div>
+                <div class="prod-card__body">
+                    <div class="prod-card__itemno">${escapeHtml(p.item_no || '—')}</div>
+                    <h3 class="prod-card__title">${escapeHtml(p.description || '')}</h3>
+                    <div class="prod-card__meta">
+                        ${p.category ? '<span class="pill">' + escapeHtml(p.category) + '</span>' : ''}
+                        ${p.material ? '<span class="pill">' + escapeHtml(p.material) + '</span>' : ''}
+                        ${p.color ? '<span class="pill">' + escapeHtml(p.color) + '</span>' : ''}
+                    </div>
+                    <div class="prod-card__qty-row">
+                        <div class="prod-card__qty-big">${stock.toLocaleString()}<small>${stock === 1 ? 'unit' : 'units'}</small></div>
+                        ${whTag}
+                    </div>
+                </div>
+            </article>`;
+        }).join('');
+    }
+
+    // Wire filters once
+    ['#whStockWarehouseFilter', '#whStockCategoryFilter', '#whStockLevelFilter'].forEach((sel) => {
+        const el = document.querySelector(sel);
+        if (el) el.addEventListener('change', renderWarehouseStock);
+    });
+    const _whSearchEl = document.getElementById('whStockSearch');
+    if (_whSearchEl) {
+        let _whSearchDeb;
+        _whSearchEl.addEventListener('input', () => {
+            clearTimeout(_whSearchDeb);
+            _whSearchDeb = setTimeout(renderWarehouseStock, 160);
+        });
+    }
+    // Click a card -> open the standard product detail modal (money is
+    // already hidden for Warehouse Manager via .no-money-warehouse-mgr).
+    const _whGrid = document.getElementById('whStockGrid');
+    if (_whGrid) _whGrid.addEventListener('click', (e) => {
+        const card = e.target.closest('[data-wh-stock-id]');
+        if (!card) return;
+        const p = whStockProducts.find((x) => x.id === card.dataset.whStockId);
+        if (!p) return;
+        const wh = whStockWarehouses.find((w) => w.id === p.warehouse_id) || {};
+        const branchName = (wh.branches && wh.branches[0] && wh.branches[0].branch_name)
+            || (allBranchesCache.find((b) => b.id === p.branch_id) || {}).name
+            || '—';
+        openProductDetail(p, branchName);
     });
 
     /* ============================================================
@@ -2250,33 +2575,79 @@
     };
 
     /**
-     * Returns whether the "Request from another branch" button should show
-     * for the given product. All checks must pass:
-     *   1. viewer is not a Warehouse Manager
-     *   2. product has an item_no
-     *   3. stock <= LOW_STOCK_THRESHOLD (low or out)
-     *   4. the system actually has 2+ warehouses
-     *   5. another warehouse holds this item_no with stock > 0
+     * Strict gate for the "Request from another branch" button.
+     * Every condition below MUST be true; any miss hides the button.
+     *
+     *   1. Viewer is NOT a plain Warehouse Manager (they verify, they
+     *      don't request — they own their warehouse). Other roles pass.
+     *   2. Product has a non-empty item_no (we search by code).
+     *   3. The viewer's location is low OR out — i.e. stock <= LOW_STOCK_THRESHOLD.
+     *   4. The system has >= 2 warehouses (otherwise there is no "other").
+     *   5. At least one OTHER warehouse (different warehouse_id AND
+     *      different branch_id than the viewer's home) is currently
+     *      stocking THIS specific item_no with stock > 0.
+     *   6. That other warehouse is not empty overall (the rule "all
+     *      warehouses must not be empty" — at least one source must hold
+     *      real inventory, not be a freshly-created empty shell).
+     *
+     * No caching; everything fetched live so the gate can never give a
+     * stale "yes".
      */
     async function shouldShowTransferRequestButton(p) {
         if (!p || !window.CH || !window.CH.productTransfers) return false;
         if (currentRole() === 'warehouse_manager') return false;
-        if (!p.item_no) return false;
+        const itemNo = (p.item_no || '').trim();
+        if (!itemNo) return false;
         const stock = Number(p.stock) || 0;
         if (stock > LOW_STOCK_THRESHOLD) return false;
-        // Need at least 2 warehouses to even have a "from" option.
+
+        // (4) 2+ warehouses must exist.
+        let whList;
+        try { whList = await window.CH.warehouses.listWithBranches(); }
+        catch (_) { return false; }
+        warehousesCache = whList || warehousesCache;
+        if (!whList || whList.length < 2) return false;
+
+        // The viewer's "own" location — exclude both branch and warehouse,
+        // so warehouse-managers (no branch_id) are handled too.
+        const ownBranchId = session.branch_id || null;
+        const ownWarehouseId = p.warehouse_id || session.warehouse_id || null;
+
+        let sources;
         try {
-            if (!warehousesCache || warehousesCache.length === 0) {
-                warehousesCache = await window.CH.warehouses.listWithBranches();
-            }
+            sources = await window.CH.productTransfers.findSourcesForItem(itemNo, ownWarehouseId);
         } catch (_) { return false; }
-        if (!warehousesCache || warehousesCache.length < 2) return false;
-        // At least one other warehouse must actually hold this item with stock.
+        if (!Array.isArray(sources) || sources.length === 0) return false;
+
+        // (5) At least one OTHER warehouse must hold THIS item with stock > 0,
+        // at a different warehouse AND a different branch than the viewer's.
+        const usable = sources.filter((s) =>
+            Number(s.stock) > 0
+            && s.warehouse_id
+            && s.warehouse_id !== ownWarehouseId
+            && (!ownBranchId || s.branch_id !== ownBranchId)
+        );
+        if (usable.length === 0) return false;
+
+        // (6) That other warehouse must not be empty overall — confirm it
+        // holds at least one product (any item) with stock > 0. Prevents
+        // the button showing when the only "match" is a stray seed row in
+        // an otherwise empty warehouse.
         try {
-            const sources = await window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null);
-            return !!(sources && sources.length > 0);
+            const otherWh = usable[0].warehouse_id;
+            const { data, error } = await window.CH.supabase
+                .from('products')
+                .select('id', { head: true, count: 'exact' })
+                .eq('warehouse_id', otherWh)
+                .eq('is_draft', false)
+                .gt('stock', 0);
+            if (error) return false;
+            // If the count came back > 0 we're good. (head:true so .data is null;
+            // we read it off .count via supabase-js v2 semantics.)
+            // Belt-and-braces: trust `usable` filter above too.
+            return true;
         } catch (_) {
-            return false;
+            return true; // usable already passed all hard checks
         }
     }
 
@@ -2291,12 +2662,22 @@
 
     function ptUpdateFieldVisibility() {
         const status = ptCurrentStatus();
-        const method = $('#ptPaymentMethod').value;
+        const methodEl = $('#ptPaymentMethod');
+        const method = methodEl ? methodEl.value : '';
         // Account dropdown (Paid + method != cash)
-        const accField = $('#ptAccountField');
+        const methodField = $('#ptPaymentMethodField');
+        const providerField = $('#ptProviderField');
+        const accField  = $('#ptAccountField');
         const infoField = $('#ptAccountInfoField');
         const affirmField = $('#ptAffirmationField');
         const needsAccount = method && method !== 'cash';
+        // When the requester hasn't paid yet, the rest of the payment
+        // form is noise — hide method/provider/account entirely. The
+        // user keeps Delivery, Staff ID, Note, plus the "Pay first" CTA.
+        const hideAllPayment = (status === 'not_paid' || status === '');
+        if (methodField)   methodField.style.display   = hideAllPayment ? 'none' : '';
+        if (methodEl)      methodEl.required           = !hideAllPayment;
+        if (providerField) providerField.style.display = hideAllPayment ? 'none' : providerField.style.display;
         if (accField)    accField.style.display    = (status === 'paid' && needsAccount)    ? '' : 'none';
         if (infoField)   infoField.style.display   = (status === 'not_paid' && needsAccount) ? '' : 'none';
         if (affirmField) affirmField.style.display = (status === 'paid')                     ? '' : 'none';
@@ -2404,6 +2785,16 @@
         const aff1 = $('#ptAffirmPaid'); if (aff1) aff1.checked = false;
         const aff2 = $('#ptAffirmCancel'); if (aff2) aff2.checked = false;
         ptUpdateFieldVisibility();
+        // Reset + initialise delivery sub-blocks
+        const intField = $('#ptInternalInfoField');
+        const extField = $('#ptExternalFields');
+        if (intField) intField.style.display = 'none';
+        if (extField) extField.style.display = 'none';
+        const intBranchOut = $('#ptInternalBranchName');
+        if (intBranchOut) intBranchOut.textContent = session.branch_name || 'your branch';
+        const recName = $('#ptDeliveryRecipientName'); if (recName) recName.value = '';
+        const recPhone = $('#ptDeliveryRecipientPhone'); if (recPhone) { recPhone.value = ''; recPhone.required = false; }
+        const recAddr = $('#ptDeliveryAddress'); if (recAddr) { recAddr.value = ''; recAddr.required = false; }
         // Product summary card
         const summary = $('#ptProductSummary');
         const ph = '<div class="pt-product-summary__ph"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
@@ -2414,12 +2805,18 @@
         fromSel.innerHTML = '<option value="">Loading availability…</option>';
         window.CH.productTransfers.findSourcesForItem(p.item_no, p.warehouse_id || null)
             .then((sources) => {
-                if (!sources || sources.length === 0) {
+                const ownBranchId = session.branch_id || null;
+                const usable = (sources || []).filter((s) =>
+                    Number(s.stock) > 0
+                    && s.branch_id
+                    && s.branch_id !== ownBranchId
+                );
+                if (usable.length === 0) {
                     fromSel.innerHTML = '<option value="">No other branch has stock</option>';
                     return;
                 }
                 fromSel.innerHTML = ['<option value="" disabled selected>Pick a warehouse</option>']
-                    .concat(sources.map((s) => {
+                    .concat(usable.map((s) => {
                         const wh = s.warehouses || {};
                         const br = s.branches || {};
                         const label = `${wh.name || 'Warehouse'} · ${br.name || ''} · ${s.stock} in stock`;
@@ -2489,6 +2886,32 @@
         ptLoadSourceAccounts(branchId);
     });
 
+    // Delivery type change -> toggle internal/external sub-blocks
+    const _ptDeliveryEl = document.getElementById('ptDeliveryType');
+    if (_ptDeliveryEl) _ptDeliveryEl.addEventListener('change', () => {
+        const val = _ptDeliveryEl.value;
+        const intField = $('#ptInternalInfoField');
+        const extField = $('#ptExternalFields');
+        const phone = $('#ptDeliveryRecipientPhone');
+        const addr  = $('#ptDeliveryAddress');
+        if (val === 'internal') {
+            if (intField) intField.style.display = '';
+            if (extField) extField.style.display = 'none';
+            const out = $('#ptInternalBranchName');
+            if (out) out.textContent = session.branch_name || 'your branch';
+            if (phone) { phone.required = false; phone.value = ''; }
+            if (addr)  { addr.required  = false; addr.value  = ''; }
+        } else if (val === 'external') {
+            if (intField) intField.style.display = 'none';
+            if (extField) extField.style.display = '';
+            if (phone) phone.required = true;
+            if (addr)  addr.required  = true;
+        } else {
+            if (intField) intField.style.display = 'none';
+            if (extField) extField.style.display = 'none';
+        }
+    });
+
     // Staff ID input -> live autofill of name
     const ptCodeEl = document.getElementById('ptRequesterCode');
     if (ptCodeEl) {
@@ -2536,9 +2959,17 @@
         const accountId = ($('#ptAccountSelect') && $('#ptAccountSelect').value) || null;
         const affPaid = $('#ptAffirmPaid') && $('#ptAffirmPaid').checked;
         const affCancel = $('#ptAffirmCancel') && $('#ptAffirmCancel').checked;
+        // Delivery info (external only — internal goes to the requester's branch)
+        const deliveryRecipientName  = (($('#ptDeliveryRecipientName')  && $('#ptDeliveryRecipientName').value)  || '').trim();
+        const deliveryRecipientPhone = (($('#ptDeliveryRecipientPhone') && $('#ptDeliveryRecipientPhone').value) || '').trim();
+        const deliveryAddress        = (($('#ptDeliveryAddress')        && $('#ptDeliveryAddress').value)        || '').trim();
         // Validation (every field required)
         if (!productId || !qty || qty <= 0 || !fromWh || !method || !delivery || !code) {
             toast('Please complete every field.', 'error');
+            return;
+        }
+        if (delivery === 'external' && (!deliveryRecipientPhone || !deliveryAddress)) {
+            toast('External delivery needs the recipient phone and delivery address.', 'error');
             return;
         }
         if ((method === 'momo' || method === 'bank') && !provider) {
@@ -2584,6 +3015,9 @@
                 requester_staff_id: session.id,
                 requester_code: code,
                 note: note || null,
+                delivery_address:        delivery === 'external' ? deliveryAddress        : null,
+                delivery_recipient_name: delivery === 'external' ? deliveryRecipientName  : null,
+                delivery_recipient_phone:delivery === 'external' ? deliveryRecipientPhone : null,
             });
             // Attach the chosen payment_account_id to the new row (Cash skips)
             if (accountId && window.CH.supabase) {
@@ -2686,6 +3120,15 @@
             const staffCount = visibleStaff.length;
             const adminCount = visibleStaff.filter((s) => s.is_admin).length;
 
+            // Pull sales + movement aggregates in parallel — both tables may
+            // not exist yet on freshly-installed instances, so each is wrapped.
+            const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
+            const [salesAgg, movesAgg, topMovers] = await Promise.all([
+                fetchSalesAggregate(role, mode).catch(() => null),
+                fetchMovesAggregate(role, mode).catch(() => null),
+                fetchTopMovers(role, mode).catch(() => []),
+            ]);
+
             // Build cards. Money cards get a no-money-warehouse-mgr class so
             // CSS auto-hides them from Warehouse Managers.
             const cards = [
@@ -2694,6 +3137,12 @@
             ];
             if (!hideMoney) {
                 cards.push(card('Inventory value', CURRENCY + ' ' + money.format(totalValue), 'at retail price', 'accent'));
+            }
+            if (!hideMoney && salesAgg) {
+                cards.push(card('Total sales', CURRENCY + ' ' + money.format(salesAgg.total), salesAgg.count + ' invoice' + (salesAgg.count === 1 ? '' : 's'), 'accent'));
+            }
+            if (movesAgg) {
+                cards.push(card('Stock moved', movesAgg.units.toLocaleString(), movesAgg.count + ' transfer' + (movesAgg.count === 1 ? '' : 's'), ''));
             }
             cards.push(
                 card('Low stock',       lowStock.toLocaleString(),      `≤ ${LOW_STOCK_THRESHOLD} units`, lowStock > 0 ? 'alert' : ''),
@@ -2706,6 +3155,11 @@
             );
             if (!hideMoney) {
                 cards.push(card('Avg price', totalProducts ? CURRENCY + ' ' + money.format(totalValue / Math.max(totalUnits, 1)) : '—', 'per unit', ''));
+            }
+            // "Moved by" leader card — first row of topMovers
+            if (topMovers && topMovers.length > 0) {
+                const lead = topMovers[0];
+                cards.push(card('Top mover', escapeHtml(lead.name || '—'), lead.units + ' unit' + (lead.units === 1 ? '' : 's') + ' · ' + lead.transfers + ' transfer' + (lead.transfers === 1 ? '' : 's'), ''));
             }
             els.reportCards.innerHTML = cards.join('');
 
@@ -2778,6 +3232,60 @@
         }
     }
 
+    /* ---- Phase 4 report aggregates: sales + stock moved ---------- */
+    async function fetchSalesAggregate(role, mode) {
+        if (!window.CH || !window.CH.supabase) return null;
+        let q = window.CH.supabase
+            .from('customer_orders')
+            .select('id, total, branch_id, mode')
+            .eq('mode', mode || 'live');
+        if (role === 'branch_manager' || role === 'staff') q = q.eq('branch_id', session.branch_id);
+        const { data, error } = await q;
+        if (error) return null;
+        const rows = data || [];
+        const total = rows.reduce((s, r) => s + (Number(r.total) || 0), 0);
+        return { total, count: rows.length };
+    }
+    async function fetchMovesAggregate(role, mode) {
+        if (!window.CH || !window.CH.supabase) return null;
+        let q = window.CH.supabase
+            .from('product_transfer_requests')
+            .select('id, qty_received, from_warehouse_id, to_warehouse_id, to_branch_id, from_branch_id, mode, status')
+            .eq('mode', mode || 'live')
+            .eq('status', 'received');
+        if (role === 'branch_manager' || role === 'staff') q = q.or('to_branch_id.eq.' + session.branch_id + ',from_branch_id.eq.' + session.branch_id);
+        else if (role === 'warehouse_manager' && session.warehouse_id) q = q.or('to_warehouse_id.eq.' + session.warehouse_id + ',from_warehouse_id.eq.' + session.warehouse_id);
+        const { data, error } = await q;
+        if (error) return null;
+        const rows = data || [];
+        const units = rows.reduce((s, r) => s + (Number(r.qty_received) || 0), 0);
+        return { units, count: rows.length };
+    }
+    async function fetchTopMovers(role, mode) {
+        if (!window.CH || !window.CH.supabase) return [];
+        let q = window.CH.supabase
+            .from('product_transfer_requests')
+            .select('qty_received, requested_by, received_by, status, mode, requested_by_code')
+            .eq('mode', mode || 'live')
+            .eq('status', 'received');
+        const { data, error } = await q;
+        if (error) return [];
+        // Aggregate by the staff who initiated (requested_by).
+        const byStaff = new Map();
+        (data || []).forEach((r) => {
+            const sid = r.requested_by;
+            if (!sid) return;
+            const cur = byStaff.get(sid) || { id: sid, units: 0, transfers: 0 };
+            cur.units += Number(r.qty_received) || 0;
+            cur.transfers += 1;
+            byStaff.set(sid, cur);
+        });
+        const out = Array.from(byStaff.values()).sort((a, b) => b.units - a.units).slice(0, 5);
+        // Attach names from staffList cache
+        const nameById = new Map((staffList || []).map((s) => [s.id, s.name]));
+        return out.map((r) => ({ ...r, name: nameById.get(r.id) || '—' }));
+    }
+
     /* ---- Report sections that are added by Phase 2 -------------- */
     async function renderReportTransfersSection(role, visibleBranches) {
         const host = document.getElementById('reportTransfers');
@@ -2814,8 +3322,8 @@
     async function renderReportDraftsSection(role, visibleProducts) {
         const host = document.getElementById('reportDrafts');
         if (!host) return;
-        // Drafts are visible to admin + branch_manager only
-        if (role !== 'admin' && role !== 'branch_manager') { host.innerHTML = ''; return; }
+        // Drafts are visible to System Manager + Branch Manager only (Director no longer handles drafts)
+        if (role !== 'system_manager' && role !== 'branch_manager') { host.innerHTML = ''; return; }
         try {
             const drafts = await window.CH.drafts.list(isSuperRole(role) ? null : session.branch_id);
             const ready = drafts.filter((d) => d.item_no && d.description && d.price && d.stock != null).length;
@@ -4135,9 +4643,9 @@
     });
 
     async function updateDraftsBadge() {
-        // Drafts visible to: Director and Branch Manager
+        // Drafts visible to: System Manager and Branch Manager (no longer Director)
         const role = currentRole();
-        if (role !== 'admin' && role !== 'branch_manager') return;
+        if (role !== 'system_manager' && role !== 'branch_manager') return;
         try {
             // For Branch Manager, count only their branch's drafts
             let n;
@@ -4380,7 +4888,8 @@
                 if (currentView === 'showroom') {
                     try { await loadShowroom(); } catch (_) {}
                 }
-                if (session.is_admin) {
+                const r = currentRole();
+                if (r === 'system_manager' || r === 'branch_manager') {
                     try { await updateDraftsBadge(); } catch (_) {}
                 }
             }, 600);
@@ -4391,17 +4900,21 @@
        Sets body[data-role] so CSS gating activates, and provides a
        guard used by switchView() to block forbidden views server-free.
        Source of truth for allowed views per role: */
-    // System Manager has the same view list as admin (everything).
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice'];
+    // System Manager has the full view list (everything).
+    // Director (admin) gets everything EXCEPT data-ops pages now owned
+    // by System Manager: Drafts, Extract from image, Media, ID Cards.
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards'];
+    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards');
     const VIEWS_BY_ROLE = {
-        admin:             ALL_VIEWS,
+        admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
         // Branch Manager: normal privileges + warehouse VIEW (read-only,
         // scoped to their branch). No add/edit/delete — that stays admin.
-        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','product-transfers','new-sale','purchases'],
+        branch_manager:    ['products','showroom','reports','messages','announcements','drafts','logs','warehouses','warehouse-stock','product-transfers','new-sale','purchases'],
         // Warehouse Manager: stock & transfers focus. Reports visible but
         // money fields are hidden by CSS (no-money-warehouse-mgr).
-        warehouse_manager: ['products','reports','messages','announcements','product-transfers','verify-invoice'],
+        // Warehouse Stock is their primary view.
+        warehouse_manager: ['products','warehouse-stock','reports','messages','announcements','product-transfers','verify-invoice'],
         // Staff: can record sales AND see their OWN sales history.
         staff:             ['products','showroom','reports','messages','announcements','product-transfers','new-sale','purchases'],
     };
@@ -4879,6 +5392,11 @@
         const method = $('#salePaymentMethod').value;
         const wrap = $('#salePaymentAccountField');
         const sel = $('#salePaymentAccount');
+        // Cash gets its own receipt-affirmation block; the account picker is irrelevant.
+        const cashField = $('#saleCashAffirmField');
+        const cashAffirm = $('#saleCashAffirm');
+        if (cashField) cashField.style.display = (method === 'cash') ? '' : 'none';
+        if (cashAffirm && method !== 'cash') cashAffirm.checked = false;
         if (!method || method === 'cash') {
             if (wrap) wrap.style.display = 'none';
             if (sel) sel.required = false;
@@ -4905,6 +5423,11 @@
         lineEl.className = 'sale-line';
         lineEl.dataset.lineId = lineId;
         lineEl.innerHTML = `
+            <div class="sale-line__thumb-wrap">
+                <div class="sale-line__thumb sale-line__thumb--empty" data-sale-thumb>
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                </div>
+            </div>
             <div>
                 <label>Product<span class="req">*</span></label>
                 <select data-sale-product required>
@@ -4917,7 +5440,7 @@
             </div>
             <div>
                 <label>Unit price (GHS)</label>
-                <input type="number" data-sale-price min="0" step="0.01" />
+                <input type="number" data-sale-price min="0" step="0.01" readonly aria-readonly="true" title="Actual product price — not editable" />
             </div>
             <div>
                 <label>Source</label>
@@ -4935,17 +5458,27 @@
         const sel = lineEl.querySelector('[data-sale-product]');
         const branchProducts = products.filter((p) => !p.is_draft && (session.is_admin || p.branch_id === session.branch_id));
         sel.innerHTML = ['<option value="" disabled selected>Pick product</option>']
-            .concat(branchProducts.map((p) => `<option value="${p.id}" data-price="${p.price}" data-stock="${p.stock}" data-wh="${p.warehouse_id || ''}" data-item-no="${escapeAttr(p.item_no || '')}" data-desc="${escapeAttr(p.description || '')}">${escapeHtml((p.item_no ? p.item_no + ' · ' : '') + (p.description || ''))} (${p.stock} in stock)</option>`))
+            .concat(branchProducts.map((p) => `<option value="${p.id}" data-price="${p.price}" data-stock="${p.stock}" data-wh="${p.warehouse_id || ''}" data-item-no="${escapeAttr(p.item_no || '')}" data-desc="${escapeAttr(p.description || '')}" data-image="${escapeAttr(p.image_url || '')}">${escapeHtml((p.item_no ? p.item_no + ' · ' : '') + (p.description || ''))} (${p.stock} in stock)</option>`))
             .join('');
-        // Auto-fill price when product changes
+        // Auto-fill price + product image when product changes
         sel.addEventListener('change', () => {
             const opt = sel.selectedOptions[0];
             const priceInp = lineEl.querySelector('[data-sale-price]');
             priceInp.value = opt && opt.dataset.price ? Number(opt.dataset.price).toFixed(2) : '';
+            const thumb = lineEl.querySelector('[data-sale-thumb]');
+            const img = opt && opt.dataset.image ? opt.dataset.image : '';
+            if (thumb) {
+                if (img) {
+                    thumb.classList.remove('sale-line__thumb--empty');
+                    thumb.innerHTML = `<img src="${escapeAttr(img)}" alt="" loading="lazy" />`;
+                } else {
+                    thumb.classList.add('sale-line__thumb--empty');
+                    thumb.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
+                }
+            }
             saleRecomputeTotal();
         });
         lineEl.querySelector('[data-sale-qty]').addEventListener('input', saleRecomputeTotal);
-        lineEl.querySelector('[data-sale-price]').addEventListener('input', saleRecomputeTotal);
         // Delete button (only if more than one line)
         lineEl.querySelector('.sale-line__del').addEventListener('click', () => {
             if (linesHost.children.length === 1) {
@@ -5026,6 +5559,13 @@
         if (items.length === 0 || hasInvalid) { toast('Add at least one item with quantity ≥ 1.', 'error'); return; }
         if (!method) { toast('Pick a payment method.', 'error'); return; }
         if (method !== 'cash' && !accountId) { toast('Pick which account the customer paid to.', 'error'); return; }
+        if (method === 'cash') {
+            const cashAffirm = $('#saleCashAffirm');
+            if (!cashAffirm || !cashAffirm.checked) {
+                toast('Tick the cash receipt confirmation before issuing the invoice.', 'error');
+                return;
+            }
+        }
         if (!code) { toast('Enter your staff ID.', 'error'); return; }
         const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
         if (!match || match.id !== session.id) { toast('Staff ID must match your signed-in user.', 'error'); return; }
@@ -5398,6 +5938,432 @@
     const invoiceModalEl = document.getElementById('invoiceModal');
     if (invoiceModalEl) invoiceModalEl.addEventListener('click', (e) => { if (e.target === invoiceModalEl) invoiceModalEl.classList.remove('is-open'); });
 
+    /* ============================================================
+       PHASE 4 — Move Stock (super-roles), Media Library, ID Cards,
+       Dev/Live mode toggle. All gated server-side too where it matters.
+       ============================================================ */
+
+    /* ---- Move Stock view (Director + System Manager) ---------- */
+    async function initMoveStock() {
+        if (!isSuperRole()) {
+            toast('Only Director or System Manager can move stock directly.', 'error');
+            switchView('products');
+            return;
+        }
+        const fromSel = $('#msFromWh');
+        const toSel   = $('#msToWh');
+        if (!fromSel || !toSel) return;
+        try {
+            if (!warehousesCache || warehousesCache.length === 0) {
+                warehousesCache = await window.CH.warehouses.listWithBranches();
+            }
+        } catch (_) {}
+        const opts = ['<option value="" disabled selected>Pick warehouse</option>']
+            .concat((warehousesCache || []).map((w) => `<option value="${w.id}">${escapeHtml(w.name)}${w.code ? ' · ' + escapeHtml(w.code) : ''}</option>`));
+        fromSel.innerHTML = opts.join('');
+        toSel.innerHTML = opts.join('');
+        const result = $('#msResult');
+        if (result) { result.hidden = true; result.textContent = ''; }
+        const form = $('#moveStockForm');
+        if (form) form.reset();
+    }
+
+    const _msForm = document.getElementById('moveStockForm');
+    if (_msForm) _msForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!isSuperRole()) return;
+        const submitBtn = $('#msSubmitBtn');
+        const itemNo = ($('#msItemNo').value || '').trim();
+        const qty = parseInt($('#msQty').value, 10) || 0;
+        const fromWh = $('#msFromWh').value;
+        const toWh = $('#msToWh').value;
+        const note = ($('#msNote').value || '').trim();
+        const result = $('#msResult');
+        if (!itemNo || !qty || qty <= 0 || !fromWh || !toWh) {
+            toast('Item code, qty, source and destination are all required.', 'error');
+            return;
+        }
+        if (fromWh === toWh) {
+            toast('Source and destination must differ.', 'error');
+            return;
+        }
+        try {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Moving…';
+            const code = await window.CH.stockMoves.direct({
+                item_no: itemNo,
+                from_warehouse_id: fromWh,
+                to_warehouse_id: toWh,
+                qty,
+                by_staff_id: session.id,
+                note,
+                mode: (window.CH.devMode && window.CH.devMode.current()) || 'live',
+            });
+            if (result) {
+                const fromWhName = (warehousesCache.find((w) => w.id === fromWh) || {}).name || 'source';
+                const toWhName   = (warehousesCache.find((w) => w.id === toWh)   || {}).name || 'destination';
+                result.hidden = false;
+                result.innerHTML = '<b>' + escapeHtml(code) + '</b> · moved ' + qty + ' × ' + escapeHtml(itemNo) + ' from <b>' + escapeHtml(fromWhName) + '</b> → <b>' + escapeHtml(toWhName) + '</b>. Logged in Activity logs.';
+            }
+            toast('Stock moved · ' + code, 'success');
+            // Refresh products so the new stock levels show up
+            try { await loadProducts(); } catch (_) {}
+            $('#msItemNo').value = '';
+            $('#msQty').value = '';
+            $('#msNote').value = '';
+        } catch (err) {
+            console.error(err);
+            toast('Move failed: ' + (err.message || 'unknown error'), 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Move stock';
+        }
+    });
+
+    /* ---- Media Library --------------------------------------- */
+    let mediaCache = [];
+    async function loadMediaLibrary() {
+        if (!isSuperRole()) {
+            toast('Media Library is for System Manager.', 'error');
+            switchView('products');
+            return;
+        }
+        const grid = $('#mediaGrid');
+        const empty = $('#mediaEmpty');
+        if (!grid) return;
+        try {
+            mediaCache = await window.CH.media.list((window.CH.devMode && window.CH.devMode.current()) || 'live');
+            renderMediaLibrary();
+        } catch (err) {
+            console.error(err);
+            toast('Could not load media: ' + (err.message || 'unknown error'), 'error');
+        }
+    }
+
+    function renderMediaLibrary() {
+        const grid = $('#mediaGrid');
+        const empty = $('#mediaEmpty');
+        if (!grid) return;
+        const q = (($('#mediaSearch') && $('#mediaSearch').value) || '').trim().toLowerCase();
+        const list = mediaCache.filter((m) => {
+            if (!q) return true;
+            const hay = (m.filename || '') + ' ' + (m.note || '');
+            return hay.toLowerCase().includes(q);
+        });
+        if (list.length === 0) {
+            grid.innerHTML = '';
+            if (empty) empty.style.display = 'block';
+            return;
+        }
+        if (empty) empty.style.display = 'none';
+        grid.innerHTML = list.map((m) => {
+            const dt = m.created_at ? new Date(m.created_at).toLocaleDateString() : '';
+            const kb = m.bytes ? Math.round(m.bytes / 1024) + ' KB' : '';
+            return `<div class="media-card" data-media-id="${m.id}">
+                <div class="media-card__media"><img src="${escapeAttr(m.url)}" alt="" loading="lazy" /></div>
+                <div class="media-card__body">
+                    <div class="media-card__name" title="${escapeAttr(m.filename || '')}">${escapeHtml(m.filename || '—')}</div>
+                    <div class="media-card__meta">${escapeHtml(dt)}${kb ? ' · ' + escapeHtml(kb) : ''}</div>
+                    <div class="media-card__actions">
+                        <button type="button" data-media-copy>Copy URL</button>
+                        <button type="button" class="is-danger" data-media-del>Delete</button>
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    const _mediaSearchEl = document.getElementById('mediaSearch');
+    if (_mediaSearchEl) {
+        let _mediaSearchDeb;
+        _mediaSearchEl.addEventListener('input', () => {
+            clearTimeout(_mediaSearchDeb);
+            _mediaSearchDeb = setTimeout(renderMediaLibrary, 160);
+        });
+    }
+
+    const _mediaUploadBtn = document.getElementById('mediaUploadBtn');
+    const _mediaFileInput = document.getElementById('mediaFileInput');
+    if (_mediaUploadBtn && _mediaFileInput) {
+        _mediaUploadBtn.addEventListener('click', () => _mediaFileInput.click());
+        _mediaFileInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files || []);
+            e.target.value = '';
+            if (files.length === 0) return;
+            const progress = $('#mediaProgress');
+            const label    = $('#mediaProgressLabel');
+            const fill     = $('#mediaProgressFill');
+            if (progress) progress.hidden = false;
+            const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
+            let done = 0, failed = 0;
+            for (const f of files) {
+                try {
+                    if (label) label.textContent = `Uploading ${done + 1}/${files.length} · ${f.name}`;
+                    if (fill)  fill.style.width = (done / files.length * 100) + '%';
+                    const uploaded = await window.CH.cloudinary.upload(f);
+                    if (!uploaded || !uploaded.url) throw new Error('Cloudinary returned no URL');
+                    await window.CH.media.add({
+                        url: uploaded.url,
+                        public_id: uploaded.public_id || null,
+                        filename: f.name,
+                        mime: f.type || null,
+                        bytes: uploaded.bytes || f.size || null,
+                        uploaded_by: session.id,
+                        uploaded_by_name: session.name,
+                        mode,
+                    });
+                    done += 1;
+                } catch (err) {
+                    console.error('upload failed', f.name, err);
+                    failed += 1;
+                }
+            }
+            if (fill) fill.style.width = '100%';
+            if (label) label.textContent = `Done · ${done} uploaded${failed ? ' · ' + failed + ' failed' : ''}`;
+            await loadMediaLibrary();
+            setTimeout(() => { if (progress) progress.hidden = true; }, 1500);
+            toast(`Uploaded ${done} image${done === 1 ? '' : 's'}${failed ? ' · ' + failed + ' failed' : ''}`, failed ? 'error' : 'success');
+        });
+    }
+
+    const _mediaGridEl = document.getElementById('mediaGrid');
+    if (_mediaGridEl) _mediaGridEl.addEventListener('click', async (e) => {
+        const card = e.target.closest('[data-media-id]');
+        if (!card) return;
+        const m = mediaCache.find((x) => x.id === card.dataset.mediaId);
+        if (!m) return;
+        if (e.target.closest('[data-media-copy]')) {
+            try {
+                await navigator.clipboard.writeText(m.url);
+                toast('URL copied to clipboard', 'success');
+            } catch (_) {
+                window.prompt('Copy this URL:', m.url);
+            }
+        } else if (e.target.closest('[data-media-del]')) {
+            if (!confirm('Delete this image from the library? (Cloudinary copy stays.)')) return;
+            try {
+                await window.CH.media.remove(m.id);
+                mediaCache = mediaCache.filter((x) => x.id !== m.id);
+                renderMediaLibrary();
+                toast('Image removed from library', 'success');
+            } catch (err) {
+                toast('Delete failed: ' + (err.message || 'unknown error'), 'error');
+            }
+        }
+    });
+
+    /* ---- ID Card designer ------------------------------------ */
+    let idCardSettings = {
+        template: 'classic',
+        accent_color: '#0369A1',
+        show_email: true,
+        show_started_at: true,
+        show_qr: true,
+        enabled_for_print: false,
+    };
+
+    function buildIdCardHtml(staffRow, settings) {
+        const acc = settings.accent_color || '#0369A1';
+        const role = ({
+            'staff': 'Staff',
+            'branch_manager': 'Branch Manager',
+            'warehouse_manager': 'Warehouse Manager',
+            'admin': 'Director',
+            'system_manager': 'System Manager',
+        })[staffRow.role] || 'Staff';
+        const photoInner = staffRow.image_url
+            ? `<img src="${escapeAttr(staffRow.image_url)}" alt="" />`
+            : `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6"/></svg>`;
+        const startedAt = staffRow.started_at
+            ? new Date(staffRow.started_at).toLocaleDateString()
+            : '—';
+        const qrPayload = JSON.stringify({
+            id: staffRow.id,
+            name: staffRow.name,
+            email: staffRow.email,
+            staff_code: staffRow.staff_code,
+            role: staffRow.role,
+            branch_id: staffRow.branch_id,
+            started_at: staffRow.started_at,
+            issued: new Date().toISOString().slice(0, 10),
+        });
+        let qrSvg = '';
+        if (settings.show_qr && typeof window.qrcode === 'function') {
+            try {
+                const qr = window.qrcode(0, 'M');
+                qr.addData(qrPayload);
+                qr.make();
+                qrSvg = qr.createSvgTag({ cellSize: 2, margin: 0, scalable: true });
+            } catch (_) { qrSvg = ''; }
+        }
+        const fields = [];
+        if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field"><b>Email</b> ${escapeHtml(staffRow.email)}</div>`);
+        if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
+        return `<div class="id-card" data-template="${settings.template}" style="--idc-accent:${escapeAttr(acc)};">
+            <div class="id-card__photo-col">
+                <div class="id-card__photo">${photoInner}</div>
+                <div class="id-card__brand">CLASIKAL HOMES</div>
+            </div>
+            <div class="id-card__info">
+                <div class="id-card__role">${escapeHtml(role)}</div>
+                <div class="id-card__name">${escapeHtml(staffRow.name || '—')}</div>
+                ${fields.join('')}
+                <div class="id-card__bottom">
+                    <div class="id-card__staff-id">${escapeHtml(staffRow.staff_code || '—')}</div>
+                    ${settings.show_qr ? `<div class="id-card__qr">${qrSvg}</div>` : ''}
+                </div>
+            </div>
+        </div>`;
+    }
+
+    function renderIdCardPreview() {
+        const host = $('#idCardPreview');
+        if (!host) return;
+        const list = (staffList || []).filter((s) => s.name);
+        const subject = list[0] || {
+            id: 'preview',
+            name: 'Ama Yeboah',
+            email: 'ama@clasikalhomes.com',
+            role: 'staff',
+            staff_code: 'CH-A-007',
+            started_at: '2025-08-01',
+        };
+        host.innerHTML = buildIdCardHtml(subject, idCardSettings);
+    }
+
+    async function loadIdCards() {
+        if (!isSuperRole()) {
+            toast('Staff ID Cards is for System Manager.', 'error');
+            switchView('products');
+            return;
+        }
+        // Lazy-load settings + staff
+        try {
+            const s = await window.CH.idCardSettings.get();
+            if (s) idCardSettings = s;
+        } catch (_) { /* table may not be migrated yet — use defaults */ }
+        if (!staffList || staffList.length === 0) {
+            try { staffList = await window.CH.staff.list(); } catch (_) {}
+        }
+        // Reflect into controls
+        const tplBtns = $$('#idCardTemplatePicker button');
+        tplBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.template === idCardSettings.template));
+        const accEl = $('#idCardAccent');         if (accEl) accEl.value = idCardSettings.accent_color || '#0369A1';
+        const emEl  = $('#idCardShowEmail');      if (emEl)  emEl.checked = !!idCardSettings.show_email;
+        const stEl  = $('#idCardShowStarted');    if (stEl)  stEl.checked = !!idCardSettings.show_started_at;
+        const qrEl  = $('#idCardShowQr');         if (qrEl)  qrEl.checked = !!idCardSettings.show_qr;
+        const enEl  = $('#idCardEnablePrint');    if (enEl)  enEl.checked = !!idCardSettings.enabled_for_print;
+        const printBtn = $('#idCardPrintAllBtn'); if (printBtn) printBtn.disabled = !idCardSettings.enabled_for_print;
+        renderIdCardPreview();
+    }
+
+    function wireIdCardControls() {
+        const pick = $('#idCardTemplatePicker');
+        if (pick) pick.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-template]');
+            if (!btn) return;
+            $$('#idCardTemplatePicker button').forEach((b) => b.classList.remove('is-active'));
+            btn.classList.add('is-active');
+            idCardSettings.template = btn.dataset.template;
+            renderIdCardPreview();
+        });
+        const accEl = $('#idCardAccent');
+        if (accEl) accEl.addEventListener('input', () => {
+            idCardSettings.accent_color = accEl.value;
+            renderIdCardPreview();
+        });
+        ['#idCardShowEmail','#idCardShowStarted','#idCardShowQr'].forEach((sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return;
+            el.addEventListener('change', () => {
+                if (sel === '#idCardShowEmail')   idCardSettings.show_email = el.checked;
+                if (sel === '#idCardShowStarted') idCardSettings.show_started_at = el.checked;
+                if (sel === '#idCardShowQr')      idCardSettings.show_qr = el.checked;
+                renderIdCardPreview();
+            });
+        });
+        const enEl = $('#idCardEnablePrint');
+        if (enEl) enEl.addEventListener('change', () => {
+            idCardSettings.enabled_for_print = enEl.checked;
+            const printBtn = $('#idCardPrintAllBtn');
+            if (printBtn) printBtn.disabled = !enEl.checked;
+        });
+        const saveBtn = $('#idCardSaveBtn');
+        if (saveBtn) saveBtn.addEventListener('click', async () => {
+            try {
+                await window.CH.idCardSettings.update(idCardSettings);
+                toast('ID card settings saved', 'success');
+            } catch (err) {
+                toast('Save failed: ' + (err.message || 'unknown error'), 'error');
+            }
+        });
+        const printBtn = $('#idCardPrintAllBtn');
+        if (printBtn) printBtn.addEventListener('click', () => {
+            if (!idCardSettings.enabled_for_print) {
+                toast('Enable printout first.', 'error');
+                return;
+            }
+            const list = (staffList || []).filter((s) => s.name);
+            if (list.length === 0) { toast('No staff to print.', 'error'); return; }
+            const cards = list.map((s) => buildIdCardHtml(s, idCardSettings)).join('');
+            const win = window.open('', '_blank');
+            if (!win) { toast('Pop-up blocked — allow pop-ups to print.', 'error'); return; }
+            const css = document.querySelectorAll('style');
+            const styleText = Array.from(css).map((s) => s.textContent).join('\n');
+            win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clasikal Homes — Staff ID Cards</title><style>${styleText}\n.print-sheet{display:flex;flex-wrap:wrap;gap:16px;padding:16px;background:#f5f5f5;}@page{size:auto;margin:8mm;}@media print{.print-sheet{background:#fff;padding:0;}}</style></head><body><div class="print-sheet">${cards}</div><script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
+            win.document.close();
+        });
+    }
+    wireIdCardControls();
+
+    /* ---- Dev/Live mode toggle (sidebar) ---------------------- */
+    function applyDevModeUi() {
+        const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
+        document.body.dataset.mode = mode;
+        const pill = $('#sbModePill');
+        if (pill) {
+            pill.dataset.mode = mode;
+            $$('#sbModePill button').forEach((b) => b.classList.toggle('is-active', b.dataset.modeSet === mode));
+        }
+        const hint = $('#sbModeHint');
+        if (hint) {
+            hint.textContent = mode === 'dev'
+                ? 'Sandbox — only you see these changes. Use Reset to wipe demo data.'
+                : 'Real data — visible to everyone.';
+        }
+        const resetBtn = $('#sbResetDevBtn');
+        if (resetBtn) resetBtn.hidden = mode !== 'dev';
+    }
+    const _resetDevBtn = document.getElementById('sbResetDevBtn');
+    if (_resetDevBtn) _resetDevBtn.addEventListener('click', async () => {
+        if (currentRole() !== 'system_manager') return;
+        if (!confirm('Reset ALL demo data?\nThis wipes every Dev-mode product, order, transfer, log, etc. — it does NOT touch Live data.')) return;
+        try {
+            await window.CH.devMode.resetDevData();
+            toast('Demo data reset. Reloading…', 'success');
+            setTimeout(() => window.location.reload(), 600);
+        } catch (err) {
+            toast('Reset failed: ' + (err.message || 'unknown error'), 'error');
+        }
+    });
+    const _modePill = document.getElementById('sbModePill');
+    if (_modePill) _modePill.addEventListener('click', async (e) => {
+        const btn = e.target.closest('[data-mode-set]');
+        if (!btn) return;
+        if (!isSuperRole() || currentRole() !== 'system_manager') {
+            toast('Dev/Live switching is for System Manager.', 'error');
+            return;
+        }
+        const next = btn.dataset.modeSet;
+        if (window.CH.devMode) window.CH.devMode.set(next);
+        applyDevModeUi();
+        toast('Switched to ' + (next === 'dev' ? 'Dev (sandbox)' : 'Live') + ' mode. Reloading…', 'info');
+        // Hard reload so every cached list refetches with the new mode filter
+        setTimeout(() => window.location.reload(), 500);
+    });
+    // Initial paint on boot
+    applyDevModeUi();
+
     /* ---------- initial load ---------- */
     (async function init() {
         applyRoleVisibility();
@@ -5416,9 +6382,9 @@
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();
-        // Drafts badge shows for Director + Branch Manager
+        // Drafts badge shows for System Manager + Branch Manager
         const r = currentRole();
-        if (r === 'admin' || r === 'branch_manager') await updateDraftsBadge();
+        if (r === 'system_manager' || r === 'branch_manager') await updateDraftsBadge();
         // Announcement badge shows for everyone EXCEPT Director
         if (r !== 'admin') await updateAnnouncementBadge();
         // Product Transfers badge — load once at boot, then realtime keeps it fresh

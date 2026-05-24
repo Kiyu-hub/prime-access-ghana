@@ -267,6 +267,16 @@
         body[data-role="admin"] .nav__label.admin-only,
         body[data-role="system_manager"] .nav__label.admin-only { display: block; }
 
+        /* Data-ops pages routed to System Manager only (hidden from Director).
+           Import Excel, Extract from image, Drafts. Branch Manager still
+           gets Drafts via the override further below. */
+        .nav .sys-manager-only { display: none; }
+        body[data-role="system_manager"] .nav .sys-manager-only { display: flex; }
+        .nav__label.sys-manager-only { display: none; }
+        body[data-role="system_manager"] .nav__label.sys-manager-only { display: block; }
+        #importBtn { display: none; }
+        body[data-role="system_manager"] #importBtn { display: inline-flex; }
+
         /* Announcements (.staff-only) — visible to everyone EXCEPT super-roles. */
         body.is-admin .nav .staff-only,
         body[data-role="admin"] .nav .staff-only,
@@ -290,6 +300,349 @@
            (Already hidden via .admin-only, this is just an explicit assert.) */
         body[data-role="staff"] .nav a[data-view="logs"],
         body[data-role="staff"] .nav a[data-view="drafts"] { display: none !important; }
+
+        /* ---- Staff photo row (Add/Edit Staff modal) ----------- */
+        .staff-photo-row { display: flex; gap: 14px; align-items: center; }
+        .staff-photo-thumb {
+            width: 72px; height: 72px;
+            border-radius: 50%;
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            display: grid; place-items: center;
+            overflow: hidden;
+            color: var(--c-ink-5);
+            flex-shrink: 0;
+        }
+        .staff-photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .staff-photo-actions { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+        .staff-photo-actions .btn { padding: 6px 14px; font-size: 0.82rem; }
+        .staff-photo-hint { font-size: 0.74rem; color: var(--c-ink-5); }
+
+        /* ---- Move Stock form ----------------------------------- */
+        .ms-form {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 22px 24px;
+            max-width: 780px;
+            box-shadow: var(--shadow-sm);
+        }
+        .ms-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 720px) { .ms-grid { grid-template-columns: 1fr; } }
+        .ms-grid .field--full { grid-column: 1 / -1; }
+        .ms-form label { display: block; font-size: 0.78rem; font-weight: 500; color: var(--c-ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+        .ms-form input, .ms-form select, .ms-form textarea {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--c-line);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.92rem;
+            background: var(--c-white);
+        }
+        .ms-form input:focus, .ms-form select:focus, .ms-form textarea:focus {
+            outline: none;
+            border-color: var(--c-accent);
+            box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.1);
+        }
+        .ms-hint { display: block; font-size: 0.75rem; color: var(--c-ink-5); margin-top: 4px; }
+        .ms-actions { margin-top: 18px; display: flex; justify-content: flex-end; }
+        .ms-result {
+            padding: 12px 14px;
+            background: #ECFDF5;
+            border: 1px solid #A7F3D0;
+            border-radius: 8px;
+            color: #065F46;
+            font-size: 0.88rem;
+        }
+
+        /* ---- Media Library ------------------------------------- */
+        .media-toolbar { margin-bottom: 12px; display: flex; gap: 10px; }
+        .media-progress {
+            margin-bottom: 12px;
+            padding: 10px 14px;
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-radius: 8px;
+        }
+        .media-progress__label { font-size: 0.82rem; color: #1E40AF; margin-bottom: 6px; font-weight: 500; }
+        .media-progress__bar { height: 6px; background: rgba(30, 64, 175, 0.15); border-radius: 999px; overflow: hidden; }
+        .media-progress__fill { height: 100%; background: linear-gradient(90deg, #2563EB, #06B6D4); transition: width 0.3s ease; }
+        .media-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 12px;
+        }
+        .media-card {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow-sm);
+            display: flex;
+            flex-direction: column;
+        }
+        .media-card__media { aspect-ratio: 1 / 1; background: var(--c-bg); overflow: hidden; }
+        .media-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .media-card__body { padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
+        .media-card__name { font-size: 0.76rem; color: var(--c-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .media-card__meta { font-size: 0.7rem; color: var(--c-ink-5); }
+        .media-card__actions { display: flex; gap: 4px; margin-top: 4px; }
+        .media-card__actions button {
+            flex: 1;
+            font-size: 0.72rem;
+            padding: 5px 6px;
+            border-radius: 6px;
+            border: 1px solid var(--c-line);
+            background: var(--c-bg);
+            color: var(--c-ink-3);
+            cursor: pointer;
+            transition: all var(--t-fast);
+        }
+        .media-card__actions button:hover { color: var(--c-accent); border-color: var(--c-accent); }
+        .media-card__actions button.is-danger:hover { color: var(--c-danger); border-color: #FECACA; background: #FEF2F2; }
+
+        /* ---- ID Card designer ---------------------------------- */
+        .idc-layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+            align-items: start;
+        }
+        @media (max-width: 900px) { .idc-layout { grid-template-columns: 1fr; } }
+        .idc-controls {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 18px 20px;
+            box-shadow: var(--shadow-sm);
+        }
+        .idc-control { margin-bottom: 16px; }
+        .idc-control:last-child { margin-bottom: 0; }
+        .idc-control > label {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: var(--c-ink-3);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
+        }
+        .idc-template-picker {
+            display: inline-flex;
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: 999px;
+            padding: 3px;
+        }
+        .idc-template-picker button {
+            background: transparent;
+            color: var(--c-ink-4);
+            border: 0;
+            padding: 6px 14px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all var(--t-fast);
+        }
+        .idc-template-picker button.is-active { background: var(--c-accent); color: #fff; box-shadow: var(--shadow-sm); }
+        .idc-toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.88rem;
+            font-weight: 400;
+            color: var(--c-ink-2);
+            text-transform: none;
+            letter-spacing: 0;
+            margin-bottom: 6px;
+            cursor: pointer;
+        }
+        .idc-toggle input { width: 16px; height: 16px; accent-color: var(--c-accent); }
+        .idc-hint { font-size: 0.74rem; color: var(--c-ink-5); margin-top: 6px; line-height: 1.4; }
+        .idc-preview-wrap { display: flex; flex-direction: column; align-items: flex-start; }
+        .idc-preview-label {
+            font-size: 0.72rem;
+            color: var(--c-ink-4);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            margin-bottom: 10px;
+        }
+        .idc-card-host { display: flex; flex-wrap: wrap; gap: 16px; }
+
+        /* The card itself — used in preview and in printed sheets */
+        .id-card {
+            width: 320px;
+            height: 200px;
+            border-radius: 14px;
+            overflow: hidden;
+            position: relative;
+            background: #fff;
+            box-shadow: 0 10px 30px rgba(11, 31, 63, 0.15);
+            font-family: var(--f-sans);
+            color: var(--c-ink-1);
+        }
+        /* Template: Classic — horizontal split */
+        .id-card[data-template="classic"] { display: grid; grid-template-columns: 110px 1fr; }
+        .id-card[data-template="classic"] .id-card__photo-col {
+            background: linear-gradient(160deg, var(--idc-accent, #0369A1) 0%, #0B1F3F 100%);
+            display: grid;
+            place-items: center;
+            padding: 14px;
+            color: #fff;
+        }
+        .id-card[data-template="classic"] .id-card__photo {
+            width: 80px; height: 80px; border-radius: 50%;
+            background: rgba(255,255,255,0.18);
+            border: 2px solid rgba(255,255,255,0.4);
+            overflow: hidden;
+            display: grid; place-items: center;
+        }
+        .id-card[data-template="classic"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="classic"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; opacity: 0.85; margin-top: 10px; text-align: center; }
+        .id-card[data-template="classic"] .id-card__info { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+
+        /* Template: Modern — vertical with photo header */
+        .id-card[data-template="modern"] { display: flex; flex-direction: column; }
+        .id-card[data-template="modern"] .id-card__photo-col {
+            background: linear-gradient(135deg, var(--idc-accent, #0369A1) 0%, #06B6D4 100%);
+            padding: 14px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .id-card[data-template="modern"] .id-card__photo {
+            width: 56px; height: 56px; border-radius: 12px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.18);
+            border: 2px solid rgba(255,255,255,0.4);
+            display: grid; place-items: center;
+        }
+        .id-card[data-template="modern"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="modern"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; opacity: 0.85; }
+        .id-card[data-template="modern"] .id-card__info { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+
+        /* Template: Minimal — text-led */
+        .id-card[data-template="minimal"] { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; border-top: 4px solid var(--idc-accent, #0369A1); }
+        .id-card[data-template="minimal"] .id-card__photo-col { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+        .id-card[data-template="minimal"] .id-card__photo {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: var(--c-bg); border: 1px solid var(--c-line);
+            overflow: hidden;
+            display: grid; place-items: center;
+            color: var(--c-ink-5);
+        }
+        .id-card[data-template="minimal"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="minimal"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; color: var(--c-ink-4); }
+
+        .id-card__name { font-family: var(--f-display, var(--f-sans)); font-size: 1rem; font-weight: 600; line-height: 1.2; color: var(--c-ink-1); }
+        .id-card__role { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--idc-accent, #0369A1); font-weight: 600; }
+        .id-card__field { font-size: 0.72rem; color: var(--c-ink-3); display: flex; gap: 6px; }
+        .id-card__field b { color: var(--c-ink-2); font-weight: 600; }
+        .id-card__bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; gap: 10px; }
+        .id-card__qr {
+            width: 56px; height: 56px;
+            background: #fff; border: 1px solid var(--c-line);
+            border-radius: 6px;
+            display: grid; place-items: center;
+            overflow: hidden;
+        }
+        .id-card__qr img, .id-card__qr canvas, .id-card__qr svg { width: 100%; height: 100%; }
+        .id-card__staff-id { font-family: var(--f-mono); font-size: 0.72rem; color: var(--c-ink-3); }
+
+        /* Print-all sheet (opens in a new window) */
+        @media print {
+            body { background: #fff; }
+            .id-card { break-inside: avoid; page-break-inside: avoid; }
+        }
+
+        /* Dev/Live mode pill at the bottom of the sidebar */
+        .sb-mode {
+            margin: 0 14px 12px;
+            padding: 10px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--r-md);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+        }
+        .sb-mode__row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .sb-mode__label { font-size: 0.72rem; color: rgba(255,255,255,0.55); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 500; }
+        .sb-mode__pill {
+            display: inline-flex;
+            background: rgba(0, 0, 0, 0.25);
+            border-radius: 999px;
+            padding: 2px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .sb-mode__pill button {
+            background: transparent;
+            color: rgba(255,255,255,0.55);
+            border: 0;
+            font-size: 0.7rem;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            padding: 4px 10px;
+            border-radius: 999px;
+            cursor: pointer;
+            transition: all var(--t-fast);
+        }
+        .sb-mode__pill button.is-active { background: var(--c-accent); color: #fff; }
+        .sb-mode__pill[data-mode="dev"] button.is-active { background: #F59E0B; }
+        .sb-mode__hint { font-size: 0.7rem; color: rgba(255,255,255,0.45); margin-top: 6px; line-height: 1.3; }
+        .sb-mode__action {
+            margin-top: 8px;
+            background: rgba(245, 158, 11, 0.18);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            color: #FBBF24;
+            font-size: 0.74rem;
+            font-weight: 600;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all var(--t-fast);
+            width: 100%;
+        }
+        .sb-mode__action:hover { background: rgba(245, 158, 11, 0.3); }
+
+        /* Dev-mode banner: top of the page, only when toggle is on Dev */
+        body[data-mode="dev"] .main::before {
+            content: "DEV MODE · sandbox data only · nothing here is visible to other users";
+            display: block;
+            background: linear-gradient(90deg, #F59E0B, #EA580C);
+            color: #fff;
+            font-size: 0.74rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            text-align: center;
+            padding: 8px 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        /* Warehouse Stock — dedicated showroom-style stock page.
+           Visible to everyone with operational warehouse exposure:
+           Director, System Manager, Branch Manager, Warehouse Manager.
+           Plain Staff don't get it (they work from the Showroom view). */
+        .nav .role-wh-stock { display: none; }
+        body[data-role="admin"] .nav .role-wh-stock,
+        body[data-role="system_manager"] .nav .role-wh-stock,
+        body[data-role="branch_manager"] .nav .role-wh-stock,
+        body[data-role="warehouse_manager"] .nav .role-wh-stock { display: flex; }
+
+        /* Move Stock — only Director + System Manager (super-roles). */
+        .nav .role-move-stock { display: none; }
+        body[data-role="admin"] .nav .role-move-stock,
+        body[data-role="system_manager"] .nav .role-move-stock { display: flex; }
 
         /* ---- Phase 3 role gating: Sales / Purchases / Verify ---- */
         /* Default: hide */
@@ -734,7 +1087,115 @@
         .prod-card--draft { box-shadow: 0 1px 0 #F59E0B inset, var(--shadow-sm); }
         .prod-card__pending { position: absolute; top: 12px; left: 12px; z-index: 2; }
 
-        .row-actions { display: flex; gap: 4px; justify-content: flex-end; }
+        .row-actions { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+
+        /* ---- Dedicated Warehouse Stock page ---------------------- */
+        .wh-stock-toolbar { flex-wrap: wrap; }
+        .wh-stock-search {
+            flex: 1 1 220px;
+            height: 38px;
+            padding: 0 12px;
+            border: 1px solid var(--c-line);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 0.86rem;
+            background: var(--c-white);
+            color: var(--c-ink-2);
+        }
+        .wh-stock-search:focus {
+            outline: none;
+            border-color: var(--c-accent);
+            box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.12);
+        }
+        .wh-stock-totals {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        @media (max-width: 720px) { .wh-stock-totals { grid-template-columns: repeat(2, 1fr); } }
+        .wh-stock-totals__card {
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 12px 14px;
+            box-shadow: var(--shadow-sm);
+        }
+        .wh-stock-totals__label {
+            font-size: 0.7rem;
+            color: var(--c-ink-4);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-weight: 500;
+        }
+        .wh-stock-totals__value {
+            font-family: var(--f-display, var(--f-mono));
+            font-size: 1.6rem;
+            color: var(--c-ink-1);
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        /* Stock card variant — same chassis as .prod-card but qty-led.
+           Replaces the price row with a quantity headline + warehouse tag. */
+        .prod-card__qty-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-top: auto;
+            padding-top: 4px;
+            gap: 6px;
+        }
+        .prod-card__qty-big {
+            font-family: var(--f-display, var(--f-mono));
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: var(--c-ink-1);
+            letter-spacing: 0.01em;
+        }
+        .prod-card__qty-big small {
+            font-size: 0.66rem;
+            color: var(--c-ink-4);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-left: 4px;
+        }
+        .prod-card__wh-tag {
+            font-size: 0.64rem;
+            color: var(--c-ink-4);
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: 4px;
+            padding: 2px 6px;
+            max-width: 50%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Warehouse stock panel — inline expansion under a warehouse row.
+           Money is intentionally never shown here; quantity only. */
+        .wh-stock-cell { background: #F8FAFC !important; padding: 0 !important; }
+        .wh-stock-panel { padding: 16px 20px; border-top: 2px solid var(--c-accent); }
+        .wh-stock-panel__hd {
+            font-weight: 600;
+            color: var(--c-ink-2);
+            margin-bottom: 6px;
+            letter-spacing: 0.02em;
+        }
+        .wh-stock-panel__stats {
+            display: flex;
+            gap: 16px;
+            font-size: 0.82rem;
+            color: var(--c-ink-4);
+            margin-bottom: 10px;
+        }
+        .wh-stock-panel__stats b { color: var(--c-ink-2); }
+        .wh-stock-panel__empty { color: var(--c-ink-5); font-size: 0.86rem; padding: 6px 0; }
+        .wh-stock-panel__table { overflow-x: auto; }
+        .wh-stock-tbl { background: #fff; }
+        .wh-stock-tbl th, .wh-stock-tbl td { font-size: 0.84rem; padding: 8px 10px; }
         .icon-btn {
             background: transparent;
             border: 1px solid transparent;
@@ -1952,6 +2413,33 @@
             color: #991B1B;
         }
 
+        /* Internal delivery confirmation panel */
+        .pt-internal-info {
+            background: #ECFDF5;
+            border: 1px solid #A7F3D0;
+            border-radius: var(--r-md);
+            padding: 14px 16px;
+            color: #065F46;
+            font-size: 0.88rem;
+            line-height: 1.5;
+        }
+        .pt-internal-info__title { font-weight: 700; margin-bottom: 6px; }
+        .pt-internal-info__row { margin-bottom: 4px; }
+        .pt-internal-info__hint { font-size: 0.8rem; color: #047857; font-style: italic; }
+
+        /* External delivery details */
+        .pt-external-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-radius: var(--r-md);
+            padding: 14px 16px;
+        }
+        .pt-external-grid .field--full { grid-column: 1 / -1; }
+        @media (max-width: 600px) { .pt-external-grid { grid-template-columns: 1fr; } }
+
         /* Transfers inbox tabs */
         .pt-tabs {
             display: flex;
@@ -2027,7 +2515,7 @@
         }
         .sale-line {
             display: grid;
-            grid-template-columns: 2fr 80px 110px 110px 32px;
+            grid-template-columns: 64px 2fr 80px 110px 110px 32px;
             gap: 10px;
             align-items: end;
             padding: 12px;
@@ -2035,10 +2523,26 @@
             border: 1px solid var(--c-line);
             border-radius: var(--r-md);
         }
+        .sale-line__thumb-wrap { align-self: end; }
+        .sale-line__thumb {
+            width: 56px;
+            height: 56px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            display: grid;
+            place-items: center;
+        }
+        .sale-line__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .sale-line__thumb--empty { color: var(--c-ink-5); background: #f8fafc; }
         @media (max-width: 720px) {
-            .sale-line { grid-template-columns: 1fr 1fr; }
-            .sale-line > :nth-child(1) { grid-column: 1 / -1; }
-            .sale-line > :nth-child(5) { grid-column: 2 / 3; justify-self: end; }
+            .sale-line { grid-template-columns: 64px 1fr; }
+            .sale-line > :nth-child(2) { grid-column: 2 / 3; }
+            .sale-line > :nth-child(3),
+            .sale-line > :nth-child(4),
+            .sale-line > :nth-child(5) { grid-column: 1 / -1; }
+            .sale-line > :nth-child(6) { grid-column: 1 / -1; justify-self: end; }
         }
         .sale-line label {
             display: block;
@@ -2058,6 +2562,51 @@
             font-family: inherit;
             font-size: 0.86rem;
             background: var(--c-white);
+        }
+        .sale-line input[readonly] {
+            background: #f3f4f6;
+            color: var(--c-ink-3);
+            cursor: not-allowed;
+        }
+
+        /* Cash receipt affirmation block (New Sale) */
+        .sale-cash-affirm {
+            margin-top: 12px;
+            padding: 14px 16px;
+            background: #ECFDF5;
+            border: 1px solid #A7F3D0;
+            border-radius: var(--r-md);
+            color: #065F46;
+        }
+        .sale-cash-affirm__title {
+            font-weight: 700;
+            margin-bottom: 6px;
+            font-size: 0.9rem;
+        }
+        .sale-cash-affirm__row {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            text-transform: none;
+            letter-spacing: 0;
+            font-weight: 400;
+            color: #065F46;
+            margin-bottom: 0;
+        }
+        .sale-cash-affirm__row input {
+            width: 18px; height: 18px;
+            margin-top: 2px;
+            accent-color: var(--c-success);
+            flex-shrink: 0;
+        }
+        .sale-cash-affirm__hint {
+            margin-top: 8px;
+            font-size: 0.8rem;
+            font-style: italic;
+            color: #047857;
         }
         .sale-line__del {
             background: transparent;
@@ -3135,6 +3684,14 @@
                     <span>Product Transfers</span>
                     <span class="nav-badge" id="navTransfersBadge" hidden>0</span>
                 </a>
+                <a class="role-wh-stock" data-view="warehouse-stock">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7l9-4 9 4v13H3z"/>
+                        <path d="M3 11h18"/>
+                        <rect x="8" y="14" width="8" height="5" rx="0.5"/>
+                    </svg>
+                    <span>Warehouse Stock</span>
+                </a>
                 <a class="role-sales" data-view="new-sale">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
@@ -3179,7 +3736,7 @@
                     </svg>
                     <span>Export Excel</span>
                 </a>
-                <a data-action="import">
+                <a class="sys-manager-only" data-action="import">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="7" y="3" width="13" height="18" rx="2"/>
                         <path d="M11 8h5"/>
@@ -3189,6 +3746,23 @@
                         <path d="M4 17h7"/>
                     </svg>
                     <span>Import Excel</span>
+                </a>
+                <a class="sys-manager-only" data-view="media">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="16" rx="2"/>
+                        <circle cx="9" cy="10" r="2"/>
+                        <path d="M21 16l-5-5-10 9"/>
+                    </svg>
+                    <span>Media Library</span>
+                </a>
+                <a class="role-move-stock" data-view="move-stock">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7h11"/>
+                        <path d="M9 3l-6 4 6 4"/>
+                        <path d="M21 17H10"/>
+                        <path d="M15 13l6 4-6 4"/>
+                    </svg>
+                    <span>Move Stock</span>
                 </a>
 
                 <span class="nav__label admin-only">Director</span>
@@ -3240,7 +3814,17 @@
                     </svg>
                     <span>Staff</span>
                 </a>
-                <a class="admin-only" data-view="extract">
+                <a class="sys-manager-only" data-view="id-cards">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="5" width="18" height="14" rx="2"/>
+                        <circle cx="9" cy="11" r="2.2"/>
+                        <path d="M14 10h4"/>
+                        <path d="M14 13h4"/>
+                        <path d="M6 16h12"/>
+                    </svg>
+                    <span>Staff ID Cards</span>
+                </a>
+                <a class="sys-manager-only" data-view="extract">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="4" width="18" height="14" rx="2"/>
                         <circle cx="9" cy="10" r="2"/>
@@ -3250,7 +3834,7 @@
                     </svg>
                     <span>Extract from image</span>
                 </a>
-                <a class="admin-only" data-view="drafts">
+                <a class="sys-manager-only" data-view="drafts">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                         <polyline points="14 2 14 8 20 8"/>
@@ -3268,6 +3852,19 @@
                     <span>Activity logs</span>
                 </a>
             </nav>
+
+            <!-- Dev/Live mode toggle (System Manager only) -->
+            <div class="sb-mode sys-manager-only" id="sbModeWrap">
+                <div class="sb-mode__row">
+                    <span class="sb-mode__label">Mode</span>
+                    <div class="sb-mode__pill" id="sbModePill" data-mode="live">
+                        <button type="button" data-mode-set="live" class="is-active">Live</button>
+                        <button type="button" data-mode-set="dev">Dev</button>
+                    </div>
+                </div>
+                <div class="sb-mode__hint" id="sbModeHint">Real data — visible to everyone.</div>
+                <button type="button" class="sb-mode__action" id="sbResetDevBtn" hidden>Reset demo data</button>
+            </div>
 
             <div class="sb-user">
                 <div class="avatar" id="userAvatar">CH</div>
@@ -3357,7 +3954,7 @@
                         <div class="stat__value" id="statLow">0</div>
                         <div class="stat__hint">&le; 5 units</div>
                     </div>
-                    <div class="stat stat--val reveal reveal--d4">
+                    <div class="stat stat--val reveal reveal--d4 no-money-warehouse-mgr">
                         <div class="stat__icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
                         </div>
@@ -3407,7 +4004,7 @@
                                     <th>Material</th>
                                     <th>Color</th>
                                     <th>Dimensions (mm)</th>
-                                    <th>Price</th>
+                                    <th class="no-money-warehouse-mgr">Price</th>
                                     <th>Quantity</th>
                                     <th style="text-align: right;">Actions</th>
                                 </tr>
@@ -3560,6 +4157,64 @@
             </section>
 
             <!-- ============================== -->
+            <!--      WAREHOUSE STOCK VIEW      -->
+            <!--   Showroom-style cards, qty    -->
+            <!--   only — no prices anywhere.   -->
+            <!-- ============================== -->
+            <section class="view" id="view-warehouse-stock">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Warehouse Stock</h1>
+                        <p id="whStockHeading">Live count of every item in your warehouse.</p>
+                    </div>
+                </div>
+
+                <div class="wh-stock-totals" id="whStockTotals">
+                    <div class="wh-stock-totals__card">
+                        <div class="wh-stock-totals__label">Items</div>
+                        <div class="wh-stock-totals__value" id="whStockSkuCount">0</div>
+                    </div>
+                    <div class="wh-stock-totals__card">
+                        <div class="wh-stock-totals__label">Total units</div>
+                        <div class="wh-stock-totals__value" id="whStockUnitCount">0</div>
+                    </div>
+                    <div class="wh-stock-totals__card">
+                        <div class="wh-stock-totals__label">Low stock</div>
+                        <div class="wh-stock-totals__value" id="whStockLowCount">0</div>
+                    </div>
+                    <div class="wh-stock-totals__card">
+                        <div class="wh-stock-totals__label">Out of stock</div>
+                        <div class="wh-stock-totals__value" id="whStockOutCount">0</div>
+                    </div>
+                </div>
+
+                <div class="showroom-toolbar wh-stock-toolbar">
+                    <select id="whStockWarehouseFilter">
+                        <option value="">All my warehouses</option>
+                    </select>
+                    <select id="whStockCategoryFilter">
+                        <option value="">All categories</option>
+                    </select>
+                    <select id="whStockLevelFilter">
+                        <option value="">Any stock level</option>
+                        <option value="in">In stock</option>
+                        <option value="low">Low stock</option>
+                        <option value="out">Out of stock</option>
+                    </select>
+                    <input type="search" id="whStockSearch" class="wh-stock-search" placeholder="Search item no., description, color…" autocomplete="off" />
+                </div>
+
+                <div class="showroom-grid wh-stock-grid" id="whStockGrid"></div>
+                <div class="empty" id="whStockEmpty" style="display:none;">
+                    <div class="empty__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7l9-4 9 4v13H3z"/><path d="M3 11h18"/></svg>
+                    </div>
+                    <h3>No products in this warehouse yet</h3>
+                    <p>Once stock is added or transferred in, it'll appear here.</p>
+                </div>
+            </section>
+
+            <!-- ============================== -->
             <!--    PRODUCT TRANSFERS VIEW      -->
             <!-- ============================== -->
             <section class="view" id="view-product-transfers">
@@ -3670,6 +4325,17 @@
                                     Payment confirmed
                                 </label>
                             </div>
+                        </div>
+
+                        <!-- Cash-only affirmation: cashier confirms the cash
+                             is physically in hand before the invoice is issued. -->
+                        <div class="sale-cash-affirm" id="saleCashAffirmField" style="display:none;">
+                            <div class="sale-cash-affirm__title">Cash receipt confirmation</div>
+                            <label class="sale-cash-affirm__row">
+                                <input type="checkbox" id="saleCashAffirm" />
+                                <span>I confirm I have <b>physically received the full cash amount</b> from the customer and counted it correctly.</span>
+                            </label>
+                            <div class="sale-cash-affirm__hint">An invoice cannot be issued until this is ticked. The customer's copy will note "Cash · receipt confirmed by [your name]".</div>
                         </div>
                     </section>
 
@@ -3804,6 +4470,138 @@
                         </div>
                         <h3>No payment accounts yet</h3>
                         <p>Add bank, MoMo, or POS accounts so requesters know where to pay.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ============================== -->
+            <!--        MOVE STOCK VIEW         -->
+            <!--   Super-roles only: direct     -->
+            <!--   inter-warehouse stock move   -->
+            <!--   without payment ceremony.    -->
+            <!-- ============================== -->
+            <section class="view" id="view-move-stock">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Move Stock</h1>
+                        <p>Director / System Manager only. Moves stock straight between warehouses — no payment, no request. Captured in Activity logs and Reports.</p>
+                    </div>
+                </div>
+
+                <form id="moveStockForm" class="ms-form">
+                    <div class="ms-grid">
+                        <div>
+                            <label for="msItemNo">Item code<span class="req">*</span></label>
+                            <input type="text" id="msItemNo" placeholder="e.g. 3116" required autocomplete="off" />
+                            <small id="msItemHint" class="ms-hint">Pick an item code that exists in the source warehouse.</small>
+                        </div>
+                        <div>
+                            <label for="msQty">Quantity<span class="req">*</span></label>
+                            <input type="number" id="msQty" min="1" placeholder="e.g. 5" required />
+                        </div>
+                        <div>
+                            <label for="msFromWh">From warehouse<span class="req">*</span></label>
+                            <select id="msFromWh" required></select>
+                        </div>
+                        <div>
+                            <label for="msToWh">To warehouse<span class="req">*</span></label>
+                            <select id="msToWh" required></select>
+                        </div>
+                        <div class="field--full">
+                            <label for="msNote">Note <span class="hint">(optional)</span></label>
+                            <textarea id="msNote" rows="2" placeholder="Reason for the move (rebalance, internal restock, etc.)"></textarea>
+                        </div>
+                        <div class="field--full ms-result" id="msResult" hidden></div>
+                    </div>
+                    <div class="ms-actions">
+                        <button type="submit" class="btn btn--primary" id="msSubmitBtn">Move stock</button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ============================== -->
+            <!--        MEDIA LIBRARY VIEW      -->
+            <!--   System Manager only.         -->
+            <!-- ============================== -->
+            <section class="view" id="view-media">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Media Library</h1>
+                        <p>Bulk-upload images to Cloudinary. Copy the URL of any uploaded image to reuse it across the portal.</p>
+                    </div>
+                    <div class="topbar__actions">
+                        <button type="button" class="btn btn--primary" id="mediaUploadBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <span>Upload images</span>
+                        </button>
+                        <input type="file" id="mediaFileInput" accept="image/*" multiple style="display:none;" />
+                    </div>
+                </div>
+
+                <div class="media-toolbar">
+                    <input type="search" id="mediaSearch" class="wh-stock-search" placeholder="Search filename or note…" autocomplete="off" />
+                </div>
+
+                <div class="media-progress" id="mediaProgress" hidden>
+                    <div class="media-progress__label" id="mediaProgressLabel">Uploading 0/0…</div>
+                    <div class="media-progress__bar"><div class="media-progress__fill" id="mediaProgressFill" style="width:0%"></div></div>
+                </div>
+
+                <div class="media-grid" id="mediaGrid"></div>
+                <div class="empty" id="mediaEmpty" style="display:none;">
+                    <div class="empty__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-10 9"/></svg>
+                    </div>
+                    <h3>No images yet</h3>
+                    <p>Use <strong>Upload images</strong> to add product photos, marketing assets, anything you'll need later.</p>
+                </div>
+            </section>
+
+            <!-- ============================== -->
+            <!--       STAFF ID CARDS VIEW      -->
+            <!--   System Manager only.         -->
+            <!-- ============================== -->
+            <section class="view" id="view-id-cards">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Staff ID Cards</h1>
+                        <p>Pick a template, choose what shows, and print branded ID cards for every staff member.</p>
+                    </div>
+                    <div class="topbar__actions">
+                        <button type="button" class="btn" id="idCardSaveBtn">Save settings</button>
+                        <button type="button" class="btn btn--primary" id="idCardPrintAllBtn" disabled>Print all staff</button>
+                    </div>
+                </div>
+
+                <div class="idc-layout">
+                    <aside class="idc-controls">
+                        <div class="idc-control">
+                            <label>Template</label>
+                            <div class="idc-template-picker" id="idCardTemplatePicker">
+                                <button type="button" data-template="classic" class="is-active">Classic</button>
+                                <button type="button" data-template="modern">Modern</button>
+                                <button type="button" data-template="minimal">Minimal</button>
+                            </div>
+                        </div>
+                        <div class="idc-control">
+                            <label for="idCardAccent">Accent colour</label>
+                            <input type="color" id="idCardAccent" value="#0369A1" />
+                        </div>
+                        <div class="idc-control">
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowEmail" checked /> Show email</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowStarted" checked /> Show start date</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowQr" checked /> Show QR code</label>
+                        </div>
+                        <div class="idc-control">
+                            <label class="idc-toggle"><input type="checkbox" id="idCardEnablePrint" /> Enable printout for all staff</label>
+                            <div class="idc-hint">When ticked, the <b>Print all staff</b> button is unlocked and every active staff gets a card.</div>
+                        </div>
+                    </aside>
+
+                    <div class="idc-preview-wrap">
+                        <div class="idc-preview-label">Live preview</div>
+                        <div class="idc-card-host" id="idCardPreview"></div>
+                        <div class="idc-hint">Preview uses the first active staff member. Real cards use each staff's real photo, ID code, email, and start date.</div>
                     </div>
                 </div>
             </section>
@@ -4579,6 +5377,25 @@
                         <label for="staffCodeDisplay">Staff code <span class="hint">(auto-generated)</span></label>
                         <input type="text" id="staffCodeDisplay" placeholder="Generated on save" readonly style="background: var(--c-bg); font-family: var(--f-mono); font-size: 0.84rem; color: var(--c-ink-3);" />
                     </div>
+                    <div>
+                        <label for="staffStartedAt">Start date <span class="hint">(optional)</span></label>
+                        <input type="date" id="staffStartedAt" />
+                    </div>
+                    <div class="field--full">
+                        <label>Profile photo <span class="hint">(optional — used on the ID card)</span></label>
+                        <div class="staff-photo-row">
+                            <div class="staff-photo-thumb" id="staffPhotoThumb">
+                                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6"/></svg>
+                            </div>
+                            <div class="staff-photo-actions">
+                                <button type="button" class="btn" id="staffPhotoUploadBtn">Upload photo</button>
+                                <button type="button" class="btn" id="staffPhotoClearBtn" style="display:none;">Remove</button>
+                                <input type="file" id="staffPhotoInput" accept="image/*" style="display:none;" />
+                                <input type="hidden" id="staffPhotoUrl" />
+                                <small class="staff-photo-hint">Square photos look best. Max 5 MB.</small>
+                            </div>
+                        </div>
+                    </div>
                     <!-- Hidden compat for old form-submit code path -->
                     <input type="hidden" id="staffIsAdmin" />
 
@@ -4675,7 +5492,7 @@
                 </button>
                 <div class="pdetail__itemno" id="pdetailItemNo">—</div>
                 <h2 class="pdetail__title" id="pdetailTitle">Product name</h2>
-                <div class="pdetail__price" id="pdetailPrice">GHS 0.00</div>
+                <div class="pdetail__price no-money-warehouse-mgr" id="pdetailPrice">GHS 0.00</div>
                 <div id="pdetailMetaPills" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
                 <div class="pdetail__rows" id="pdetailRows"></div>
                 <button type="button" class="btn btn--primary pdetail__request" id="pdetailRequestBtn" hidden style="margin-top: 14px;">
@@ -4829,7 +5646,7 @@
                         </div>
                     </div>
 
-                    <div>
+                    <div id="ptPaymentMethodField">
                         <label for="ptPaymentMethod">Payment method<span class="req">*</span></label>
                         <select id="ptPaymentMethod" required>
                             <option value="" disabled selected>Select method</option>
@@ -4870,13 +5687,40 @@
                         </label>
                     </div>
 
-                    <div>
+                    <div class="field--full">
                         <label for="ptDeliveryType">Delivery<span class="req">*</span></label>
                         <select id="ptDeliveryType" required>
                             <option value="" disabled selected>Select delivery</option>
-                            <option value="internal">Internal (our courier)</option>
-                            <option value="external">External (3rd-party / pickup)</option>
+                            <option value="internal">Internal (our courier · stays in the company)</option>
+                            <option value="external">External (3rd-party / direct to customer)</option>
                         </select>
+                    </div>
+
+                    <!-- Internal: just confirm the destination (the requester's branch) -->
+                    <div class="field--full" id="ptInternalInfoField" style="display:none;">
+                        <div class="pt-internal-info">
+                            <div class="pt-internal-info__title">Internal delivery</div>
+                            <div class="pt-internal-info__row">Goods will be delivered to your branch: <strong id="ptInternalBranchName">—</strong></div>
+                            <div class="pt-internal-info__hint">Our courier will move the stock from the source warehouse to your branch. No external address needed.</div>
+                        </div>
+                    </div>
+
+                    <!-- External: 3rd-party / direct-to-customer requires delivery info -->
+                    <div class="field--full" id="ptExternalFields" style="display:none;">
+                        <div class="pt-external-grid">
+                            <div>
+                                <label for="ptDeliveryRecipientName">Recipient name <span class="hint">(optional)</span></label>
+                                <input type="text" id="ptDeliveryRecipientName" placeholder="e.g. Ama Yeboah" autocomplete="off" />
+                            </div>
+                            <div>
+                                <label for="ptDeliveryRecipientPhone">Recipient phone<span class="req">*</span></label>
+                                <input type="tel" id="ptDeliveryRecipientPhone" placeholder="e.g. 024 123 4567" inputmode="tel" autocomplete="off" />
+                            </div>
+                            <div class="field--full">
+                                <label for="ptDeliveryAddress">Delivery address<span class="req">*</span></label>
+                                <textarea id="ptDeliveryAddress" rows="2" placeholder="House number, street, area, city / landmark"></textarea>
+                            </div>
+                        </div>
                     </div>
 
                     <div>
@@ -4913,6 +5757,8 @@
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.4/dist/tesseract.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+    <!-- QR generator (lightweight, no deps) used by Staff ID Cards -->
+    <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
     <script src="scripts/pdf-export.js"></script>
     <script src="scripts/dashboard.js"></script>
     <script src="scripts/install.js"></script>
