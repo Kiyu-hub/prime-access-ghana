@@ -310,6 +310,9 @@
 
         /* Stat colour variant for Out of Stock */
         .stat.stat--out .stat__icon { background: linear-gradient(135deg, #FECACA, #F87171); color: #7F1D1D; }
+        /* OOS card is reserved for Warehouse Manager — keeps everyone at 4 cards. */
+        .oos-warehouse-only { display: none; }
+        body[data-role="warehouse_manager"] .oos-warehouse-only { display: flex; }
 
         /* ---- Staff photo row (Add/Edit Staff modal) ----------- */
         .staff-photo-row { display: flex; gap: 14px; align-items: center; }
@@ -531,29 +534,27 @@
         .idc-card-host { display: flex; flex-wrap: wrap; gap: 16px; }
 
         /* ============================================================
-           Staff ID Cards — all 5 templates strictly on Clasikal brand:
-             Navy   #0B1F3F  (primary)
-             Sky    #0369A1  (accent, picked via colour input)
-             Ink    var(--c-ink-1)
-             Bone   #F8FAFC  (off-white surface)
-           No gold, no plain primary blocks. Every card breathes.
+           Staff ID Cards.
+             Classic / Modern / Minimal: original sizing + look preserved.
+             Heritage / Crest: on-brand variants introduced in Phase 4.
+           Branch location field is added universally without resizing.
            ============================================================ */
         .id-card {
             --idc-navy: #0B1F3F;
             --idc-bone: #F8FAFC;
-            width: 340px;
-            height: 215px;
+            width: 320px;
+            height: 200px;
             border-radius: 14px;
             overflow: hidden;
             position: relative;
             background: #fff;
-            box-shadow: 0 14px 36px rgba(11, 31, 63, 0.18);
+            box-shadow: 0 10px 30px rgba(11, 31, 63, 0.15);
             font-family: var(--f-sans);
             color: var(--c-ink-1);
         }
         .id-card * { box-sizing: border-box; }
         .id-card__logo {
-            width: 28px; height: 28px;
+            width: 24px; height: 24px;
             background: #fff;
             border-radius: 5px;
             padding: 3px;
@@ -567,83 +568,71 @@
             gap: 8px;
         }
 
-        /* ---- Template: Classic — horizontal split, navy left ---- */
-        .id-card[data-template="classic"] { display: grid; grid-template-columns: 118px 1fr; }
+        /* ---- Template: Classic — original horizontal split ---- */
+        .id-card[data-template="classic"] { display: grid; grid-template-columns: 110px 1fr; }
         .id-card[data-template="classic"] .id-card__photo-col {
-            background: linear-gradient(165deg, var(--idc-navy) 0%, var(--idc-accent, #0369A1) 100%);
+            background: linear-gradient(160deg, var(--idc-accent, #0369A1) 0%, #0B1F3F 100%);
+            display: grid;
+            place-items: center;
+            padding: 14px;
             color: #fff;
-            padding: 14px 12px;
-            display: flex; flex-direction: column; align-items: center; gap: 10px;
         }
         .id-card[data-template="classic"] .id-card__photo {
-            width: 78px; height: 78px; border-radius: 50%;
-            background: rgba(255,255,255,0.16);
-            border: 2px solid rgba(255,255,255,0.55);
+            width: 80px; height: 80px; border-radius: 50%;
+            background: rgba(255,255,255,0.18);
+            border: 2px solid rgba(255,255,255,0.4);
             overflow: hidden;
             display: grid; place-items: center;
         }
         .id-card[data-template="classic"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="classic"] .id-card__brand {
-            font-family: var(--f-display, var(--f-sans));
-            font-size: 0.64rem; letter-spacing: 0.22em; opacity: 0.92; text-align: center; line-height: 1.2;
-        }
-        .id-card[data-template="classic"] .id-card__info {
-            padding: 12px 14px 12px 16px;
-            display: flex; flex-direction: column; gap: 4px;
-            min-width: 0; overflow: hidden;
-        }
+        .id-card[data-template="classic"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; opacity: 0.85; margin-top: 10px; text-align: center; }
+        .id-card[data-template="classic"] .id-card__info { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; overflow: hidden; }
 
-        /* ---- Template: Modern — top-bar header, content below ---- */
+        /* ---- Template: Modern — original vertical with photo header ---- */
         .id-card[data-template="modern"] { display: flex; flex-direction: column; }
         .id-card[data-template="modern"] .id-card__photo-col {
-            background: linear-gradient(105deg, var(--idc-navy) 0%, var(--idc-accent, #0369A1) 100%);
-            padding: 10px 14px;
+            background: linear-gradient(135deg, var(--idc-accent, #0369A1) 0%, #06B6D4 100%);
+            padding: 12px 14px;
             color: #fff;
-            display: flex; align-items: center; gap: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
             flex-shrink: 0;
-            height: 56px;
         }
         .id-card[data-template="modern"] .id-card__photo {
-            width: 40px; height: 40px; border-radius: 50%;
+            width: 44px; height: 44px; border-radius: 10px;
             overflow: hidden;
             background: rgba(255,255,255,0.18);
-            border: 2px solid rgba(255,255,255,0.55);
-            display: grid; place-items: center; flex-shrink: 0;
-        }
-        .id-card[data-template="modern"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="modern"] .id-card__brand {
-            font-family: var(--f-display, var(--f-sans));
-            font-size: 0.66rem; letter-spacing: 0.22em; line-height: 1.1; font-weight: 600;
-        }
-        .id-card[data-template="modern"] .id-card__info {
-            padding: 12px 14px 12px;
-            display: flex; flex-direction: column; gap: 3px;
-            flex: 1; min-height: 0; overflow: hidden;
-        }
-
-        /* ---- Template: Minimal — text-led with sky accent rule ---- */
-        .id-card[data-template="minimal"] {
-            padding: 16px 18px;
-            display: flex; flex-direction: column; gap: 4px;
-            border-top: 4px solid var(--idc-accent, #0369A1);
-            background: #fff;
-        }
-        .id-card[data-template="minimal"] .id-card__photo-col {
-            display: flex; gap: 10px; align-items: center; margin-bottom: 4px;
-        }
-        .id-card[data-template="minimal"] .id-card__photo {
-            width: 42px; height: 42px; border-radius: 50%;
-            background: var(--idc-bone); border: 1px solid #E2E8F0;
-            overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.4);
             display: grid; place-items: center;
-            color: #94A3B8;
             flex-shrink: 0;
         }
-        .id-card[data-template="minimal"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
-        .id-card[data-template="minimal"] .id-card__brand {
-            font-family: var(--f-display, var(--f-sans));
-            font-size: 0.66rem; letter-spacing: 0.22em; color: var(--idc-navy); font-weight: 600;
+        .id-card[data-template="modern"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="modern"] .id-card__brand { font-size: 0.6rem; letter-spacing: 0.18em; opacity: 0.85; }
+        .id-card[data-template="modern"] .id-card__info {
+            padding: 10px 14px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            flex: 1;
+            min-height: 0;
+            overflow: hidden;
         }
+        .id-card[data-template="modern"] .id-card__bottom { margin-top: 4px; align-items: center; }
+        .id-card[data-template="modern"] .id-card__qr { width: 48px; height: 48px; flex-shrink: 0; }
+
+        /* ---- Template: Minimal — original text-led ---- */
+        .id-card[data-template="minimal"] { padding: 18px 20px; display: flex; flex-direction: column; gap: 6px; border-top: 4px solid var(--idc-accent, #0369A1); }
+        .id-card[data-template="minimal"] .id-card__photo-col { display: flex; gap: 12px; align-items: center; margin-bottom: 6px; }
+        .id-card[data-template="minimal"] .id-card__photo {
+            width: 44px; height: 44px; border-radius: 50%;
+            background: var(--c-bg); border: 1px solid var(--c-line);
+            overflow: hidden;
+            display: grid; place-items: center;
+            color: var(--c-ink-5);
+        }
+        .id-card[data-template="minimal"] .id-card__photo img { width: 100%; height: 100%; object-fit: cover; }
+        .id-card[data-template="minimal"] .id-card__brand { font-size: 0.62rem; letter-spacing: 0.18em; color: var(--c-ink-4); }
 
         /* ---- Template: Heritage — editorial; bone canvas, navy serif name,
                                     thin sky rule. No gold anywhere. ---- */
@@ -2974,6 +2963,119 @@
         .invoice-doc__footer { text-align: center; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--c-line); font-size: 0.78rem; color: var(--c-ink-4); }
         .invoice-doc__footer i { color: var(--c-accent); }
 
+        /* ---- Invoice Templates page --------------------------- */
+        .invtpl-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .invtpl-card {
+            background: var(--c-white);
+            border: 1.5px solid var(--c-line);
+            border-radius: var(--r-md);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            transition: all var(--t-fast);
+        }
+        .invtpl-card.is-active {
+            border-color: var(--c-accent);
+            box-shadow: 0 0 0 3px rgba(3,105,161,0.12);
+        }
+        .invtpl-card__head { display: flex; align-items: center; justify-content: space-between; }
+        .invtpl-card__head h3 { margin: 0; font-size: 1rem; color: var(--c-ink-1); font-weight: 600; }
+        .invtpl-card__badge {
+            font-size: 0.66rem;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            background: var(--c-bg);
+            color: var(--c-ink-4);
+            padding: 3px 8px;
+            border-radius: 999px;
+        }
+        .invtpl-card.is-active .invtpl-card__badge { background: var(--c-accent); color: #fff; }
+        .invtpl-preview {
+            background: var(--c-bg);
+            border-radius: 8px;
+            padding: 8px;
+            min-height: 280px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            overflow: hidden;
+        }
+        .invtpl-preview .invoice-doc { transform: scale(0.55); transform-origin: top center; box-shadow: var(--shadow-sm); }
+        .invtpl-card__set { width: 100%; justify-content: center; }
+        .invtpl-card.is-active .invtpl-card__set { background: var(--c-accent); color: #fff; border-color: var(--c-accent); }
+
+        /* Compact variant — half-height receipt feel, single column */
+        .invoice-doc[data-template="compact"] { max-width: 360px; padding: 18px 22px; }
+        .invoice-doc[data-template="compact"] .invoice-doc__head {
+            display: flex; flex-direction: column; gap: 8px; text-align: center;
+            border-bottom: 1px dashed var(--c-line);
+        }
+        .invoice-doc[data-template="compact"] .invoice-doc__brand strong { font-size: 1rem; }
+        .invoice-doc[data-template="compact"] .invoice-doc__meta { font-size: 0.78rem; line-height: 1.5; text-align: center; }
+        .invoice-doc[data-template="compact"] h3 { font-size: 0.78rem; letter-spacing: 0.12em; }
+        .invoice-doc[data-template="compact"] table th,
+        .invoice-doc[data-template="compact"] table td { padding: 6px 4px; font-size: 0.78rem; }
+        .invoice-doc[data-template="compact"] .invoice-doc__total { font-size: 1.05rem; padding: 10px 12px; }
+        .invoice-doc[data-template="compact"] .invoice-doc__footer { font-size: 0.72rem; }
+
+        /* Premium variant — full-bleed navy header, branded blocks */
+        .invoice-doc[data-template="premium"] { padding: 0; overflow: hidden; }
+        .invoice-doc[data-template="premium"] .invoice-doc__head {
+            background: linear-gradient(135deg, #0B1F3F 0%, #0369A1 100%);
+            color: #fff;
+            padding: 22px 28px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 16px;
+            border: 0;
+        }
+        .invoice-doc[data-template="premium"] .invoice-doc__brand strong,
+        .invoice-doc[data-template="premium"] .invoice-doc__brand small { color: #fff; }
+        .invoice-doc[data-template="premium"] .invoice-doc__brand img {
+            background: #fff; padding: 4px; border-radius: 6px;
+        }
+        .invoice-doc[data-template="premium"] .invoice-doc__meta { color: #fff; text-align: right; font-size: 0.84rem; }
+        .invoice-doc[data-template="premium"] .invoice-doc__meta b { color: #FBBF24; }
+        .invoice-doc[data-template="premium"] .invoice-doc__body { padding: 22px 28px; }
+        .invoice-doc[data-template="premium"] h3 {
+            color: var(--c-accent);
+            letter-spacing: 0.14em;
+            border-left: 3px solid var(--c-accent);
+            padding-left: 8px;
+            font-size: 0.74rem;
+        }
+        .invoice-doc[data-template="premium"] table th {
+            background: #F1F5F9; color: var(--c-ink-2); border-bottom: 2px solid var(--c-accent);
+        }
+        .invoice-doc[data-template="premium"] .invoice-doc__total {
+            background: linear-gradient(135deg, #0B1F3F, #0369A1);
+            color: #fff;
+            border-radius: 8px;
+            margin: 18px -28px -22px;
+            padding: 18px 28px;
+            font-size: 1.4rem;
+            text-align: right;
+        }
+        .invoice-doc[data-template="premium"] .invoice-doc__footer {
+            background: #F8FAFC;
+            margin: 20px -28px -22px;
+            padding: 16px 28px;
+            border-top: 0;
+        }
+
+        @page {
+            /* Shrink the browser-added URL + date headers/footers to
+               the smallest possible margins so the customer copy is
+               clean. (Chrome additionally honours the user's "Headers
+               and footers" checkbox in the print dialog.) */
+            size: A4;
+            margin: 8mm;
+        }
         @media print {
             body * { visibility: hidden !important; }
             #invoiceDoc, #invoiceDoc * { visibility: visible !important; }
@@ -4088,6 +4190,15 @@
                     </svg>
                     <span>Staff</span>
                 </a>
+                <a class="sys-manager-only" data-view="invoice-templates">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="5" y="3" width="14" height="18" rx="2"/>
+                        <path d="M9 7h6"/>
+                        <path d="M9 11h6"/>
+                        <path d="M9 15h4"/>
+                    </svg>
+                    <span>Invoice Templates</span>
+                </a>
                 <a class="role-id-cards sys-manager-only" data-view="id-cards">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="3" y="5" width="18" height="14" rx="2"/>
@@ -4243,7 +4354,7 @@
                         <div class="stat__value" id="statValue">GHS 0</div>
                         <div class="stat__hint">at retail price</div>
                     </div>
-                    <div class="stat stat--out reveal reveal--d5">
+                    <div class="stat stat--out reveal reveal--d5 oos-warehouse-only">
                         <div class="stat__icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/></svg>
                         </div>
@@ -4914,6 +5025,49 @@
                         <div class="idc-card-host" id="idCardPreview"></div>
                         <div class="idc-hint">Preview uses the first active staff member. Real cards use each staff's real photo, ID code, email, and start date.</div>
                     </div>
+                </div>
+            </section>
+
+            <!-- ============================== -->
+            <!--     INVOICE TEMPLATES VIEW     -->
+            <!--   System Admin only.           -->
+            <!-- ============================== -->
+            <section class="view" id="view-invoice-templates">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Invoice Templates</h1>
+                        <p>Pick the design used for every new sale's invoice. The customer copy uses the same design.</p>
+                    </div>
+                    <div class="topbar__actions">
+                        <button type="button" class="btn btn--primary" id="invoiceTplSaveBtn">Save active template</button>
+                    </div>
+                </div>
+
+                <div class="invtpl-grid" id="invoiceTemplateGrid">
+                    <article class="invtpl-card" data-invtpl="standard">
+                        <div class="invtpl-card__head">
+                            <h3>Standard</h3>
+                            <span class="invtpl-card__badge">Default</span>
+                        </div>
+                        <div class="invtpl-preview" data-invtpl-preview="standard"></div>
+                        <button type="button" class="btn invtpl-card__set" data-set-invtpl="standard">Use Standard</button>
+                    </article>
+                    <article class="invtpl-card" data-invtpl="compact">
+                        <div class="invtpl-card__head">
+                            <h3>Compact</h3>
+                            <span class="invtpl-card__badge">Receipt</span>
+                        </div>
+                        <div class="invtpl-preview" data-invtpl-preview="compact"></div>
+                        <button type="button" class="btn invtpl-card__set" data-set-invtpl="compact">Use Compact</button>
+                    </article>
+                    <article class="invtpl-card" data-invtpl="premium">
+                        <div class="invtpl-card__head">
+                            <h3>Premium</h3>
+                            <span class="invtpl-card__badge">Branded</span>
+                        </div>
+                        <div class="invtpl-preview" data-invtpl-preview="premium"></div>
+                        <button type="button" class="btn invtpl-card__set" data-set-invtpl="premium">Use Premium</button>
+                    </article>
                 </div>
             </section>
 

@@ -354,6 +354,7 @@
         if (view === 'move-stock') initMoveStock();
         if (view === 'media') loadMediaLibrary();
         if (view === 'id-cards') loadIdCards();
+        if (view === 'invoice-templates') loadInvoiceTemplates();
         if (view === 'new-sale') initNewSale();
         if (view === 'purchases') loadPurchases();
         if (view === 'verify-invoice') initVerifyInvoice();
@@ -5009,11 +5010,11 @@
     // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards'];
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates'];
     // Director gets everything except System Admin-only ops AND id-cards
     // by default; id-cards is dynamically allowed for Director at runtime
     // when the System Admin's feature flag is on (see switchView).
-    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards');
+    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates');
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
@@ -5727,10 +5728,13 @@
     });
 
     // ---- Invoice modal ------------------------------------------
-    async function openInvoiceModal(orderId) {
-        const full = await window.CH.customerOrders.get(orderId);
+    /* Build the invoice HTML for the active template. Three options live
+       side-by-side; the chosen one is read from feature_flags.invoice_template
+       (set by System Admin on the Invoice Templates page). */
+    function buildInvoiceHtml(full, template) {
         const branch = full.branch || {};
         const pa = full.payment_account || {};
+        const created = new Date(full.created_at);
         const itemsHtml = (full.items || []).map((it) => `
             <tr>
                 <td><strong>${escapeHtml(it.item_no_snap || '—')}</strong><br><small>${escapeHtml(it.description_snap || '')}</small></td>
@@ -5739,64 +5743,118 @@
                 <td><b>${fmtMoney(it.subtotal)}</b></td>
             </tr>
         `).join('');
-        const created = new Date(full.created_at);
-        $('#invoiceDoc').innerHTML = `
-            <div class="invoice-doc" id="invoiceDocContent">
-                <div class="invoice-doc__head">
-                    <div class="invoice-doc__brand">
-                        <img src="assets/icon-180.png" alt="" />
-                        <strong>CLASIKAL HOMES</strong>
-                        <small>we listen, we create, you enjoy</small>
-                    </div>
-                    <div class="invoice-doc__meta">
-                        <b>${escapeHtml(full.invoice_code)}</b><br>
-                        Order: ${escapeHtml(full.code)}<br>
-                        Date: ${created.toLocaleDateString()}<br>
-                        Time: ${created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<br>
-                        ${branch.name ? 'Branch: ' + escapeHtml(branch.name) + '<br>' : ''}
-                        ${branch.location ? 'Location: ' + escapeHtml(branch.location) : ''}
-                    </div>
+        const tpl = template || 'standard';
+        const head = `
+            <div class="invoice-doc__head">
+                <div class="invoice-doc__brand">
+                    <img src="assets/icon-180.png" alt="" />
+                    <strong>CLASIKAL HOMES</strong>
+                    <small>we listen, we create, you enjoy</small>
                 </div>
-
-                <h3>Customer</h3>
-                <div style="font-size:0.92rem;line-height:1.5;">
-                    <b>${escapeHtml(full.client_name || '')}</b><br>
-                    ${full.client_phone ? '📞 ' + escapeHtml(full.client_phone) + '<br>' : ''}
-                    ${full.client_email ? '✉ ' + escapeHtml(full.client_email) : ''}
+                <div class="invoice-doc__meta">
+                    <b>${escapeHtml(full.invoice_code)}</b><br>
+                    Order: ${escapeHtml(full.code)}<br>
+                    Date: ${created.toLocaleDateString()}<br>
+                    Time: ${created.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}<br>
+                    ${branch.name ? 'Branch: ' + escapeHtml(branch.name) + '<br>' : ''}
+                    ${branch.location ? 'Location: ' + escapeHtml(branch.location) : ''}
                 </div>
+            </div>`;
+        const customer = `
+            <h3>Customer</h3>
+            <div style="font-size:0.92rem;line-height:1.5;">
+                <b>${escapeHtml(full.client_name || '')}</b><br>
+                ${full.client_phone ? escapeHtml(full.client_phone) + '<br>' : ''}
+                ${full.client_email ? escapeHtml(full.client_email) : ''}
+            </div>`;
+        const itemsTable = `
+            <h3>Items</h3>
+            <table>
+                <thead><tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr></thead>
+                <tbody>${itemsHtml}</tbody>
+            </table>
+            <div class="invoice-doc__total">Total: ${fmtMoney(full.total)}</div>`;
+        const payment = `
+            <h3>Payment</h3>
+            <div style="font-size:0.92rem;line-height:1.6;">
+                Method: <b>${escapeHtml((full.payment_method || '').toUpperCase())}</b>
+                ${pa.provider ? '<br>Account: <b>' + escapeHtml(pa.provider) + ' · ' + escapeHtml(pa.account_number || '') + '</b>' : ''}
+                <br>Status: ${full.payment_confirmed ? '<b style="color:#15803d;">Paid</b>' : '<b style="color:#92400E;">Pending confirmation</b>'}
+            </div>`;
+        const footer = `
+            <div class="invoice-doc__footer">
+                Thank you for your purchase.<br>
+                <i>we listen, we create, you enjoy</i><br>
+                East Legon Hills · Accra · 054 619 1433 / 050 051 5050 · clasikalhomesgh@gmail.com
+            </div>`;
+        // Premium wraps everything after the head in an .invoice-doc__body
+        // so the navy banner can sit flush. Compact uses the same layout
+        // as Standard but the CSS shrinks padding + typography.
+        const isPremium = tpl === 'premium';
+        const innerBody = `${customer}${itemsTable}${payment}${footer}`;
+        return `<div class="invoice-doc" id="invoiceDocContent" data-template="${tpl}">
+            ${head}
+            ${isPremium ? `<div class="invoice-doc__body">${innerBody}</div>` : innerBody}
+        </div>`;
+    }
 
-                <h3>Items</h3>
-                <table>
-                    <thead>
-                        <tr><th>Product</th><th>Qty</th><th>Unit price</th><th>Subtotal</th></tr>
-                    </thead>
-                    <tbody>${itemsHtml}</tbody>
-                </table>
-
-                <div class="invoice-doc__total">Total: ${fmtMoney(full.total)}</div>
-
-                <h3>Payment</h3>
-                <div style="font-size:0.92rem;line-height:1.6;">
-                    Method: <b>${escapeHtml((full.payment_method || '').toUpperCase())}</b>
-                    ${pa.provider ? '<br>Account: <b>' + escapeHtml(pa.provider) + ' · ' + escapeHtml(pa.account_number || '') + '</b>' : ''}
-                    <br>Status: ${full.payment_confirmed ? '<b style="color:#15803d;">Paid</b>' : '<b style="color:#92400E;">Pending confirmation</b>'}
-                </div>
-
-                <div class="invoice-doc__code">
-                    <span>Invoice code · single use</span>
-                    <strong>${escapeHtml(full.invoice_code)}</strong>
-                </div>
-
-                <div class="invoice-doc__footer">
-                    Hand this slip to the warehouse manager. They will enter the code above to dispatch your goods.<br>
-                    <i>we listen, we create, you enjoy</i><br>
-                    East Legon Hills · Accra · 054 619 1433 / 050 051 5050 · clasikalhomesgh@gmail.com
-                </div>
-            </div>
-        `;
+    async function openInvoiceModal(orderId) {
+        const full = await window.CH.customerOrders.get(orderId);
+        const tpl = (featureFlagsCache && featureFlagsCache.invoice_template) || 'standard';
+        $('#invoiceDoc').innerHTML = buildInvoiceHtml(full, tpl);
         $('#invoiceModalTitle').textContent = 'Invoice · ' + full.code;
         $('#invoiceModal').classList.add('is-open');
     }
+
+    /* ---- Invoice Templates page ----------------------------- */
+    async function loadInvoiceTemplates() {
+        if (currentRole() !== 'system_manager') {
+            toast('Invoice Templates is for System Admin.', 'error');
+            switchView('products');
+            return;
+        }
+        // Render a sample invoice into each preview slot.
+        const sample = {
+            invoice_code: 'INV-A-20260524-DEMO',
+            code: 'CO-20260524-XYZ',
+            created_at: new Date().toISOString(),
+            branch: { name: 'Adabraka Showroom', location: 'Adabraka, Accra' },
+            client_name: 'Ama Yeboah',
+            client_phone: '024 123 4567',
+            client_email: 'ama@example.com',
+            payment_method: 'cash',
+            payment_confirmed: true,
+            total: 12000,
+            items: [
+                { item_no_snap: '3116', description_snap: 'Shower set chrome colors', qty: 1, unit_price: 12000, subtotal: 12000 },
+            ],
+        };
+        ['standard', 'compact', 'premium'].forEach((tpl) => {
+            const host = document.querySelector(`[data-invtpl-preview="${tpl}"]`);
+            if (host) host.innerHTML = buildInvoiceHtml(sample, tpl);
+        });
+        // Mark the active card
+        const active = (featureFlagsCache && featureFlagsCache.invoice_template) || 'standard';
+        $$('.invtpl-card').forEach((card) => {
+            card.classList.toggle('is-active', card.dataset.invtpl === active);
+        });
+    }
+    (function wireInvoiceTemplates() {
+        const grid = document.getElementById('invoiceTemplateGrid');
+        if (grid) grid.addEventListener('click', async (e) => {
+            const btn = e.target.closest('[data-set-invtpl]');
+            if (!btn) return;
+            const tpl = btn.dataset.setInvtpl;
+            try {
+                await window.CH.featureFlags.update({ invoice_template: tpl });
+                featureFlagsCache.invoice_template = tpl;
+                $$('.invtpl-card').forEach((c) => c.classList.toggle('is-active', c.dataset.invtpl === tpl));
+                toast('Invoice template set: ' + tpl.charAt(0).toUpperCase() + tpl.slice(1), 'success');
+            } catch (err) {
+                toast('Could not save template: ' + (err.message || 'unknown'), 'error');
+            }
+        });
+    })();
 
     const invoicePrintBtn = document.getElementById('invoicePrintBtn');
     if (invoicePrintBtn) invoicePrintBtn.addEventListener('click', () => window.print());
@@ -6416,19 +6474,21 @@
                 || '—';
             fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchDisplay)}</div>`);
         }
-        // Branding: logo + wordmark sit together. Modern/Bold/Heritage put
-        // the brand row beside the photo, Classic stacks it underneath.
-        const brandBlock = `
-            <div class="id-card__brand-row">
-                <div class="id-card__logo"><img src="assets/logo.png?v=4" alt="" /></div>
-                <div class="id-card__brand">CLASIKAL HOMES</div>
-            </div>`;
-        const stackedBrand = `<div class="id-card__brand">CLASIKAL HOMES</div>`;
-        const isStacked = settings.template === 'classic' || settings.template === 'heritage' || settings.template === 'minimal';
+        // Branding: classic / modern / minimal keep their original wordmark-
+        // only label (no resizing or layout change). Heritage and Crest are
+        // the on-brand variants and include the company logo beside the
+        // wordmark for a richer look.
+        const useLogo = settings.template === 'heritage' || settings.template === 'bold';
+        const brandHtml = useLogo
+            ? `<div class="id-card__brand-row">
+                   <div class="id-card__logo"><img src="assets/logo.png?v=4" alt="" /></div>
+                   <div class="id-card__brand">CLASIKAL HOMES</div>
+               </div>`
+            : `<div class="id-card__brand">CLASIKAL HOMES</div>`;
         return `<div class="id-card" data-template="${settings.template}" style="--idc-accent:${escapeAttr(acc)};">
             <div class="id-card__photo-col">
                 <div class="id-card__photo">${photoInner}</div>
-                ${isStacked ? stackedBrand : brandBlock}
+                ${brandHtml}
             </div>
             <div class="id-card__info">
                 <div class="id-card__role">${escapeHtml(role)}</div>

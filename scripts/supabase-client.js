@@ -876,6 +876,7 @@
                 move_stock_enabled: true,
                 id_cards_visible_to_director: false,
                 director_id_card_templates: 'classic',
+                invoice_template: 'standard',
             };
             try {
                 const { data, error } = await client.from('feature_flags').select('*').eq('id', 1).maybeSingle();

@@ -11,6 +11,10 @@
 alter table public.feature_flags
     add column if not exists director_id_card_templates text not null default 'classic';
 
+-- Active invoice template (Standard / Compact / Premium)
+alter table public.feature_flags
+    add column if not exists invoice_template text not null default 'standard';
+
 -- Backfill: if the older single-value column exists, copy it across
 -- (only when the new column is still on its default).
 do $$
