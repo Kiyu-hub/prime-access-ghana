@@ -2935,11 +2935,17 @@
         .verify-result__row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px dashed var(--c-line); font-size: 0.88rem; }
         .verify-result__row b { color: var(--c-ink-2); }
 
-        /* Invoice modal */
+        /* Invoice modal — the document needs the full dialog width,
+           not the 2-col form grid inherited from .modal__body. */
         .invoice-modal-body {
+            display: block !important;
+            padding: 0 !important;
+            grid-template-columns: none !important;
+            gap: 0 !important;
             max-height: calc(100dvh - 220px);
             overflow-y: auto;
         }
+        .invoice-modal-body .invoice-doc { width: 100%; max-width: 100%; }
         .invoice-doc {
             background: #fff;
             padding: 32px 36px;

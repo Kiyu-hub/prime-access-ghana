@@ -5917,10 +5917,11 @@
                 : 'pill--pt-pending';
             const statusLabel = o.status === 'fulfilled' ? 'Fulfilled' : o.status === 'cancelled' ? 'Cancelled' : 'Pending';
             const initiator = o.initiator || {};
+            const itemsCount = Number(o.items_count) || 0;
             return `<tr data-order-id="${o.id}" style="cursor:pointer;">
                 <td><span class="itemno">${escapeHtml(o.code)}</span></td>
                 <td><strong>${escapeHtml(o.client_name || '—')}</strong>${o.client_phone ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(o.client_phone) + '</small>' : ''}</td>
-                <td>—</td>
+                <td>${itemsCount > 0 ? itemsCount + (itemsCount === 1 ? ' item' : ' items') : '<span style="color:var(--c-ink-5);">—</span>'}</td>
                 <td><strong>${fmtMoney(o.total)}</strong></td>
                 <td>${escapeHtml((o.payment_method || '').toUpperCase())}${o.payment_provider ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(o.payment_provider) + '</small>' : ''}</td>
                 <td><span class="pill ${statusPill}">${statusLabel}</span></td>

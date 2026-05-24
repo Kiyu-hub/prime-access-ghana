@@ -719,8 +719,12 @@
     const customerOrders = {
         // List orders with optional filters; joins minimal nested data
         async list(opts = {}) {
+            // PostgREST `items_count:customer_order_items(count)` returns an
+            // array of one row like [{ count: 3 }] per order. We flatten it
+            // into a plain `items_count` integer below so the renderer can
+            // just read `o.items_count`.
             let q = client.from('customer_orders')
-                .select('*, branch:branch_id(name), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code)')
+                .select('*, branch:branch_id(name), warehouse:warehouse_id(name,code), initiator:initiated_by(name,staff_code), validator:validated_by(name,staff_code), items_count:customer_order_items(count)')
                 .order('created_at', { ascending: false });
             q = applyEnvFilter(q);
             if (opts.branchId)       q = q.eq('branch_id', opts.branchId);
@@ -729,7 +733,15 @@
             if (opts.limit)          q = q.limit(opts.limit);
             const { data, error } = await q;
             if (error) throw error;
-            return data || [];
+            return (data || []).map((row) => {
+                let n = 0;
+                if (Array.isArray(row.items_count) && row.items_count.length > 0) {
+                    n = Number(row.items_count[0].count) || 0;
+                } else if (typeof row.items_count === 'number') {
+                    n = row.items_count;
+                }
+                return { ...row, items_count: n };
+            });
         },
         async get(id) {
             const [orderResult, itemsResult] = await Promise.all([
