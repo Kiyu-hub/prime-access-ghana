@@ -1881,7 +1881,17 @@
     }
 
     function renderStaff() {
-        if (staffList.length === 0) {
+        // Visibility rules:
+        //   - System Admin sees every staff (including Directors and other System Admins).
+        //   - Director sees everyone EXCEPT System Admin users (System Admin
+        //     accounts are infrastructure-level and stay out of the Director's view).
+        const viewerRole = currentRole();
+        const visibleStaff = (staffList || []).filter((s) => {
+            if (viewerRole === 'system_manager') return true;
+            if (viewerRole === 'admin') return s.role !== 'system_manager';
+            return true;
+        });
+        if (visibleStaff.length === 0) {
             els.staffBody.innerHTML = '';
             els.staffEmpty.style.display = 'block';
             return;
@@ -1890,7 +1900,7 @@
 
         const roleLabel = (r) => ({ 'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager', 'admin': 'Director', 'system_manager': 'System Admin' })[r] || (r || 'Staff');
         const rolePillClass = (r) => (r === 'admin' || r === 'system_manager') ? 'pill pill--admin' : 'pill';
-        els.staffBody.innerHTML = staffList.map((s) => {
+        els.staffBody.innerHTML = visibleStaff.map((s) => {
             const avatarInner = s.image_url
                 ? `<img src="${escapeAttr(s.image_url)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;" />`
                 : initials(s.name);
