@@ -1296,10 +1296,11 @@
         }
         WAREHOUSE_ELS.empty.style.display = 'none';
         const managerById = new Map(staffList.map((s) => [s.id, s.name]));
-        const isAdmin = currentRole() === 'admin';
+        // Director AND System Admin get full edit/delete; others are view-only.
+        const isAdmin = isSuperRole();
         WAREHOUSE_ELS.body.innerHTML = warehousesCache.map((w) => {
             const linkedBranches = (w.branches || []).map((b) => `${escapeHtml(b.branch_name || '?')}${b.is_default ? ' <span class="pill" style="font-size:0.62rem;padding:1px 6px;">default</span>' : ''}`).join(', ') || '<span style="color:var(--c-ink-5);">— none —</span>';
-            // Only Director gets edit/delete actions; Branch Manager view-only.
+            // Director + System Admin get edit/delete; Branch Manager view-only.
             const actionsHtml = isAdmin
                 ? `<div class="row-actions">
                         <button type="button" class="icon-btn" data-stock-wh="${w.id}" title="View stock" aria-label="View stock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M3 11h18"/><path d="M8 4h8"/></svg></button>
@@ -3517,7 +3518,7 @@
     async function renderReportPaymentAccountsSection(role) {
         const host = document.getElementById('reportPaymentAccounts');
         if (!host) return;
-        if (role !== 'admin') { host.innerHTML = ''; return; }
+        if (!isSuperRole(role)) { host.innerHTML = ''; return; }
         if (!window.CH || !window.CH.paymentAccounts) { host.innerHTML = ''; return; }
         try {
             const all = await window.CH.paymentAccounts.list();
@@ -5546,7 +5547,7 @@
             const when = relTime(t.requested_at);
             // Action buttons
             const canReceive = t.status === 'pending' && isTransferIncoming(t);
-            const canCancel  = t.status === 'pending' && (t.requested_by === session.id || isTransferIncoming(t) || isTransferOutgoing(t) || role === 'admin');
+            const canCancel  = t.status === 'pending' && (t.requested_by === session.id || isTransferIncoming(t) || isTransferOutgoing(t) || isSuperRole(role));
             const actions = [
                 canReceive ? `<button class="btn btn--success" data-pt-receive="${t.id}" style="padding:4px 10px;font-size:0.78rem;height:auto;">Mark received</button>` : '',
                 canCancel  ? `<button class="btn" data-pt-cancel="${t.id}" style="padding:4px 10px;font-size:0.78rem;height:auto;background:#fff;border:1px solid var(--c-danger);color:var(--c-danger);">Cancel</button>` : '',
