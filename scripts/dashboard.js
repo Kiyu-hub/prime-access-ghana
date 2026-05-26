@@ -237,9 +237,13 @@
         'staff': 'Staff', 'branch_manager': 'Branch Manager', 'warehouse_manager': 'Warehouse Manager',
         'admin': 'Director', 'system_manager': 'System Admin'
     })[session.role] || (session.role || '');
-    els.userBranch.textContent = (session.branch_name || 'Unassigned') + ' · ' + _displayRole;
+    // Super roles (Director / System Admin) are company-wide and have no home
+    // branch — show "All branches" rather than the unflattering "Unassigned".
+    const _isSuper = session.role === 'admin' || session.role === 'system_manager';
+    const _branchLabel = session.branch_name || (_isSuper ? 'All branches' : 'Unassigned');
+    els.userBranch.textContent = _branchLabel + ' · ' + _displayRole;
     renderUserAvatar(session.image_url);
-    els.branchHeading.textContent = (session.branch_name || 'Unassigned') + ' · ' + _displayRole;
+    els.branchHeading.textContent = _branchLabel + ' · ' + _displayRole;
 
     /* Sidebar avatar: staff photo if set, otherwise brand logo. */
     function renderUserAvatar(imageUrl) {
