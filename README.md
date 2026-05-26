@@ -18,6 +18,7 @@ A modern, multi-branch inventory & sales platform built for Clasikal Homes (Ghan
 | **Excel import / export** | Bulk upload products from `.xlsx`/`.csv`; export the whole catalog any time |
 | **OCR ("Extract from image")** | Paste an inventory photo, run Tesseract.js OCR, turn the text into draft products |
 | **Activity log** | Every meaningful action (sale, transfer, role change, edit, delete) is recorded |
+| **Reports & analytics** | Date-filtered (Today / week / month / year / All time / custom range) sales summary, sales by branch, payments received broken down by account **and** method, and a full transaction ledger (date+time, branch, staff, client, amount, method, account, paid/unpaid, status). All role-scoped and exportable as a branded PDF "Business Report". |
 | **Messages** | Built-in chat between staff and Director / System Manager |
 | **Announcements** | One-to-many broadcasts visible to all staff except the super roles |
 | **Taxonomy** | Maintain shared category and material lists |
@@ -38,13 +39,15 @@ There are five roles. Two are "super" roles (`is_admin = true` in the database):
 
 | Role | Scope | Visible navigation |
 | --- | --- | --- |
-| **Director** (`admin`) | Owns the business. Full access **except** data-ops pages (Drafts, Extract from image, Import Excel) which now belong to the System Manager. | Products · Showrooms · Warehouse Stock · Reports · Messages · Product Transfers · New Sale · Sales/Purchases · Verify Invoice · Warehouses · Payment Accounts · Categories/Materials · Branches · Staff · Activity logs |
-| **System Manager** (`system_manager`) | Technical/operations lead. Same powers as Director **plus** owns Drafts / Extract / Import Excel. | Everything in the system |
+| **Director** (`admin`) | Owns the business. Full access **except** data-ops pages (Drafts, Extract from image, Import Excel) which belong to the System Admin. System Admin accounts are invisible to the Director (not listed in Staff, dropdowns, or report counts). | Products · Showrooms · Warehouse Stock · Reports · Messages · Product Transfers · New Sale · Sales/Purchases · Verify Invoice · Warehouses · Payment Accounts · Categories/Materials · Branches · Staff · Activity logs |
+| **System Admin** (`system_manager`, labelled "System Admin" in the UI) | The **overall manager, above the Director**. Absolute capability over everything, needs **no branch assignment**, and is **hidden from every staff listing, dropdown and report** — for all viewers, including other admins. Also owns Drafts / Extract / Import Excel and the Dev/Live toggle. | Everything in the system |
 | **Branch Manager** (`branch_manager`) | Runs one or more branches. Read-only on Warehouses, full on their branch's products. | Products · Showrooms · Warehouse Stock · Reports · Messages · Announcements · Drafts · Activity logs · Warehouses (RO) · Product Transfers · New Sale · Sales/Purchases |
 | **Warehouse Manager** (`warehouse_manager`) | Operates a warehouse. Money is hidden everywhere. | Warehouse Stock (home) · Products (no money) · Reports (no money) · Messages · Announcements · Product Transfers · Verify Invoice |
 | **Staff** (`staff`) | Showroom/sales assistant. | Products · Showrooms · Reports · Messages · Announcements · Product Transfers · New Sale · Sales/Purchases |
 
 Role assignment lives in the `staff.role` column. Changing a role bumps `session_version`, which forces the user to sign in again so the new permissions take effect.
+
+> **System Admin is an infrastructure account.** It is identified by `role = 'system_manager'` (the app also defensively recognises an account literally named "System Admin"). It is deliberately kept out of the Staff directory, the "assign manager" pickers, the ID-card print lists, and every report staff/Director count — so the Director never sees its name, email, or any detail. The migration `db/add-phase5-system-admin.sql` promotes the seeded super account to this role and clears its branch.
 
 ---
 
@@ -85,7 +88,7 @@ There is no Node project, no `package.json`, no compile step. Anything you can s
 │   ├── auth.js                 # Sign-in form on index.html
 │   ├── dashboard.js            # The entire dashboard (views, modals, role gating)
 │   ├── cloudinary.js           # Unsigned upload helper
-│   ├── pdf-export.js           # Invoice + product PDF builders
+│   ├── pdf-export.js           # Invoice + branded Business Report (inventory + sales/payments) PDF builders
 │   ├── ui.js                   # Reveal/scroll/install/SW registration
 │   ├── install.js              # PWA install prompt UI
 │   ├── sw.js                   # Service worker (app-shell + image cache)
@@ -103,6 +106,8 @@ There is no Node project, no `package.json`, no compile step. Anything you can s
     ├── add-phase3-system-manager.sql    # 5th role + super-role helpers
     ├── add-phase3-delivery-info.sql     # Transfer delivery address/phone columns
     ├── add-phase4-foundations.sql       # Dev/Live mode, Move Stock RPC, staff photo/start date, Media library, ID card settings
+    ├── add-phase4-fix*.sql              # `env` column + staff_view/RPC refreshes for Dev/Live mode
+    ├── add-phase5-system-admin.sql      # Promote the super account to System Admin (system_manager), clear its branch
     └── clear-products.sql               # Dev helper: wipe products + drafts
 ```
 
@@ -168,6 +173,7 @@ A version bump is just editing `scripts/version.js`. The service worker uses tha
 - **Bulk add products:** Import Excel (System Manager only). Rows missing required fields land in Drafts marked "needs attention" for review.
 - **Approve drafts:** Drafts (System Manager / Branch Manager) → review → Publish.
 - **Audit anything:** Activity logs (System Manager + Director).
+- **Run reports:** Reports → pick a date range (Today / This week / This month / This year / All time, or a custom From–To). The page shows a sales summary, sales by branch, payments received per account & method, and a full transaction ledger. What you see is scoped to your role (a Director/System Admin sees every branch; a Branch Manager sees their branch; Staff see their own sales; Warehouse Managers see no money). **Export PDF** produces the same content as a branded Business Report.
 
 ---
 
@@ -190,6 +196,7 @@ A version bump is just editing `scripts/version.js`. The service worker uses tha
 | **Phase 2** | Inter-branch transfers, payment accounts, multi-branch managers |
 | **Phase 3** | Customer orders + branded invoices, warehouse verification, System Manager role, transfer delivery info (internal vs external) |
 | **Phase 4** | Move Stock (direct, super-roles), cash receipt affirmation, Media Library, branded Staff ID Cards (QR + templates), Dev/Live mode for System Manager, optional staff photo + start date, stricter transfer-button gating, hidden payment fields when "Not paid", sales + stock-moved cards in Reports |
+| **Phase 5** | System Admin hardening — overall manager above the Director, no branch assignment, hidden from every staff listing / dropdown / report. Reports overhaul — date-range filter (presets + custom), sales summary, sales by branch, payments received by account & method, and a full date+time transaction ledger, all role-tailored and exported to the branded Business Report PDF |
 
 ---
 

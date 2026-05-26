@@ -3396,6 +3396,73 @@
             color: var(--c-ink-2);
             letter-spacing: -0.01em;
         }
+        .report-section h2 .report-section__sub {
+            display: block;
+            font-size: 0.78rem;
+            font-weight: 400;
+            color: var(--c-ink-5);
+            letter-spacing: 0;
+            margin-top: 3px;
+        }
+
+        /* ---------- REPORT DATE FILTER ---------- */
+        .report-filter {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: var(--c-white);
+            border: 1px solid var(--c-line);
+            border-radius: var(--r-lg);
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow-sm);
+        }
+        .report-filter__presets { display: flex; flex-wrap: wrap; gap: 6px; }
+        .rf-preset {
+            font: inherit;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--c-ink-3);
+            background: var(--c-bg);
+            border: 1px solid var(--c-line);
+            border-radius: 999px;
+            padding: 6px 14px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .rf-preset:hover { border-color: var(--c-accent-3); color: var(--c-accent); }
+        .rf-preset.is-active {
+            background: var(--c-accent);
+            border-color: var(--c-accent);
+            color: var(--c-white);
+        }
+        .report-filter__custom { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+        .report-filter__custom label {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 0.78rem; color: var(--c-ink-5); text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .report-filter__custom input[type="date"] {
+            font: inherit; font-size: 0.84rem;
+            border: 1px solid var(--c-line); border-radius: 8px;
+            padding: 6px 10px; color: var(--c-ink-2); background: var(--c-white);
+        }
+        .report-filter__custom input[type="date"]:focus { outline: none; border-color: var(--c-accent); }
+        .pay-method-tag {
+            display: inline-flex; align-items: center;
+            font-family: var(--f-mono); font-size: 0.72rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.03em;
+            padding: 2px 8px; border-radius: 6px;
+            background: rgba(3, 105, 161, 0.08); color: var(--c-accent);
+        }
+        .pill--paid { background: #DCFCE7; color: #166534; }
+        .pill--unpaid { background: #FEF3C7; color: #92400E; }
+        @media (max-width: 600px) {
+            .report-filter { flex-direction: column; align-items: stretch; }
+            .report-filter__custom { justify-content: space-between; }
+            .report-filter__custom input[type="date"] { flex: 1; min-width: 0; }
+        }
 
         /* ---------- MESSAGES ---------- */
         .chat-wrap {
@@ -5261,7 +5328,29 @@
                     </div>
                 </div>
 
+                <!-- Date-range filter — scopes every sales/payment figure below -->
+                <div class="report-filter" id="reportFilter">
+                    <div class="report-filter__presets">
+                        <button type="button" class="rf-preset" data-range="today">Today</button>
+                        <button type="button" class="rf-preset" data-range="week">This week</button>
+                        <button type="button" class="rf-preset is-active" data-range="month">This month</button>
+                        <button type="button" class="rf-preset" data-range="year">This year</button>
+                        <button type="button" class="rf-preset" data-range="all">All time</button>
+                    </div>
+                    <div class="report-filter__custom">
+                        <label for="reportFrom">From <input type="date" id="reportFrom" /></label>
+                        <label for="reportTo">To <input type="date" id="reportTo" /></label>
+                        <button type="button" class="btn" id="reportApplyRange">Apply</button>
+                    </div>
+                </div>
+
                 <div class="report-grid" id="reportCards"></div>
+
+                <!-- Sales & payment sections (filled by JS; money-hidden roles skip them) -->
+                <div class="report-section" id="reportSalesSummary" style="display:none;"></div>
+                <div class="report-section" id="reportBranchSales" style="display:none;"></div>
+                <div class="report-section" id="reportPaymentsReceived" style="display:none;"></div>
+                <div class="report-section" id="reportSalesLedger" style="display:none;"></div>
 
                 <div class="report-section">
                     <h2>Per-branch breakdown</h2>

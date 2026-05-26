@@ -70,7 +70,16 @@ Chat between staff and the Director. Use it for quick questions instead of Whats
 Broadcast notices visible to all staff. Use for store-wide updates.
 
 ### Reports
-Live summary of your scope: products, stock units, low stock, out of stock, your sales (or total sales if Director), top categories, top mover. Warehouse Managers see the same view with money hidden.
+A live, role-scoped report of your business.
+
+- **Date range:** pick **Today**, **This week**, **This month** (default), **This year**, **All time**, or set a custom **From–To**. Every sales and payment figure on the page follows the range you choose.
+- **Inventory at a glance:** products, stock units, inventory value (Director / System Admin only), low stock, out of stock, stock moved.
+- **Sales summary:** total sales, payment received (confirmed), fulfilled value, and counts of pending / cancelled invoices.
+- **Sales by branch** (Director / System Admin): each branch's invoices, total sales, amount received, and how many are fulfilled vs pending.
+- **Payments received:** broken down by **method** (Cash / MoMo / POS / Bank) and by **account** — how much was billed and how much is confirmed received per account.
+- **Sales ledger:** every transaction with its **date and time**, invoice code, branch, staff, client, amount, payment method, account, paid/unpaid, and status.
+- **What you see depends on your role:** a Branch Manager sees their branch; Staff see only their own sales; Warehouse Managers see the inventory view with **all money hidden**.
+- **Export PDF** produces a branded **Business Report** with the same content for the selected date range.
 
 ### Warehouse Stock  ← *the Warehouse Manager's home page*
 A dedicated card-grid view of warehouse inventory — same look-and-feel as the Showroom, but **no prices anywhere**. Quantity is the headline.
@@ -100,6 +109,8 @@ Add and rename branches. Assign a Branch Manager.
 Create staff, set role, set home branch, reset password. Each staff record can include an **optional profile photo** and a **start date** (used on the printed ID card if enabled). The account creation time is filled in automatically.
 
 Assignable roles: **Staff**, **Branch Manager**, **Warehouse Manager**. The Director account is the only one of its kind and isn't assignable from this form.
+
+> The **System Admin** is the overall manager (above the Director) and runs the system itself. It needs no branch and is deliberately **hidden** from this page, the manager pickers, the ID-card lists, and report counts — so it never appears in the Director's dashboard.
 
 ### Activity logs (Director)
 Audit feed. Every sale, transfer, role change, product edit/delete, and account change is recorded with who did it and when.

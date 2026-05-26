@@ -1772,7 +1772,9 @@
     function populateBranchManagerSelect() {
         const sel = document.getElementById('branchManager');
         if (!sel) return;
-        const eligible = (staffList || []).filter((s) => s.role === 'branch_manager' || isSuperRole(s.role));
+        // System Admin is infrastructure and never assignable as a branch
+        // manager — keep them out of this picker for every viewer.
+        const eligible = (staffList || []).filter((s) => !isSystemAdminStaff(s) && (s.role === 'branch_manager' || isSuperRole(s.role)));
         sel.innerHTML = ['<option value="">— No manager assigned —</option>']
             .concat(eligible.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} (${escapeHtml(s.role)})</option>`))
             .join('');
@@ -1882,16 +1884,12 @@
     }
 
     function renderStaff() {
-        // Visibility rules:
-        //   - System Admin sees every staff (including Directors and other System Admins).
-        //   - Director sees everyone EXCEPT System Admin users (System Admin
-        //     accounts are infrastructure-level and stay out of the Director's view).
-        const viewerRole = currentRole();
-        const visibleStaff = (staffList || []).filter((s) => {
-            if (viewerRole === 'system_manager') return true;
-            if (viewerRole === 'admin') return s.role !== 'system_manager';
-            return true;
-        });
+        // Visibility rule:
+        //   System Admin accounts are infrastructure-level. They are the overall
+        //   manager (above the Director) and are NEVER listed in the Staff table —
+        //   for any viewer, including other System Admins. Their name, email,
+        //   code and every other detail stay out of the staff directory entirely.
+        const visibleStaff = (staffList || []).filter((s) => !isSystemAdminStaff(s));
         if (visibleStaff.length === 0) {
             els.staffBody.innerHTML = '';
             els.staffEmpty.style.display = 'block';
@@ -3170,7 +3168,10 @@
        ============================================================ */
     async function loadReports() {
         try {
-            const { branches: br, products: prods, staff: stf } = await window.CH.reports.overview();
+            const { branches: br, products: prods, staff: stfRaw } = await window.CH.reports.overview();
+            // System Admin accounts are infrastructure-level and never count
+            // toward staff/Director totals shown on any dashboard.
+            const stf = (stfRaw || []).filter((s) => !isSystemAdminStaff(s));
             const role = currentRole();
             const hideMoney = role === 'warehouse_manager';
 
@@ -3205,6 +3206,9 @@
             renderReportTransfersSection(role, visibleBranches);
             renderReportDraftsSection(role, visibleProducts);
             renderReportPaymentAccountsSection(role);
+            // Sales + payment-received breakdown + full ledger (date-scoped,
+            // role-tailored). Self-contained; won't block inventory render.
+            renderSalesReport(role, br).catch((e) => console.warn('sales report failed:', e));
 
             // Top cards
             const totalProducts = visibleProducts.length;
@@ -3237,10 +3241,8 @@
             if (!hideMoney && isSuper) {
                 cards.push(card('Inventory value', CURRENCY + ' ' + money.format(totalValue), 'at retail price', 'accent'));
             }
-            if (!hideMoney && salesAgg) {
-                const salesLabel = isSuper ? 'Total sales' : 'Your sales';
-                cards.push(card(salesLabel, CURRENCY + ' ' + money.format(salesAgg.total), salesAgg.count + ' invoice' + (salesAgg.count === 1 ? '' : 's'), 'accent'));
-            }
+            // Sales totals now live in the date-scoped "Sales summary" section
+            // below (renderSalesReport), so they are not duplicated here.
             if (movesAgg) {
                 cards.push(card('Stock moved', movesAgg.units.toLocaleString(), movesAgg.count + ' transfer' + (movesAgg.count === 1 ? '' : 's'), ''));
             }
@@ -3468,6 +3470,227 @@
         } catch (_) { host.innerHTML = ''; }
     }
 
+    /* ---- Sales + payments report (date-scoped, role-tailored) ----- */
+    // Selected window for every sales/payment figure. Default: this month.
+    let reportRange = { preset: 'month', from: null, to: null };
+
+    function _startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+    function _endOfDay(d)   { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
+    function fmtDateTime(ts) {
+        if (!ts) return '—';
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function computeReportRange() {
+        const now = new Date();
+        let from, to = _endOfDay(now), label;
+        const p = reportRange.preset;
+        if (p === 'custom' && (reportRange.from || reportRange.to)) {
+            from = reportRange.from ? _startOfDay(new Date(reportRange.from)) : new Date(0);
+            to   = reportRange.to   ? _endOfDay(new Date(reportRange.to))    : _endOfDay(now);
+            label = `${from.toLocaleDateString('en-GB')} → ${to.toLocaleDateString('en-GB')}`;
+        } else if (p === 'today') {
+            from = _startOfDay(now); label = 'Today';
+        } else if (p === 'week') {
+            const d = _startOfDay(now); const dow = (d.getDay() + 6) % 7; // Mon = 0
+            d.setDate(d.getDate() - dow); from = d; label = 'This week';
+        } else if (p === 'year') {
+            from = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0); label = 'This year';
+        } else if (p === 'all') {
+            from = new Date(0); label = 'All time';
+        } else {
+            from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0); label = 'This month';
+        }
+        return { fromISO: from.toISOString(), toISO: to.toISOString(), label };
+    }
+
+    async function fetchSalesData(role, mode, range) {
+        if (!window.CH || !window.CH.supabase) return [];
+        let q = window.CH.supabase
+            .from('customer_orders')
+            .select('id, code, invoice_code, branch_id, subtotal, total, status, payment_method, payment_account_id, payment_confirmed, created_at, fulfilled_at, client_name, initiated_by, branch:branch_id(name), initiator:initiated_by(name,staff_code), payment_account:payment_account_id(provider,account_name,account_number,method)')
+            .gte('created_at', range.fromISO)
+            .lte('created_at', range.toISO)
+            .order('created_at', { ascending: false })
+            .limit(2000);
+        q = _envScope(q, mode);
+        // Role scope: staff -> own sales; branch_manager -> their branch;
+        // super (Director / System Admin) -> everything. Warehouse Manager
+        // never reaches here (money hidden).
+        if (role === 'staff') q = q.eq('initiated_by', session.id);
+        else if (role === 'branch_manager') q = q.eq('branch_id', session.branch_id);
+        const { data, error } = await q;
+        if (error) { console.warn('fetchSalesData:', error); return []; }
+        return data || [];
+    }
+
+    async function renderSalesReport(role, branchesList) {
+        const elSummary = document.getElementById('reportSalesSummary');
+        const elBranch  = document.getElementById('reportBranchSales');
+        const elPay     = document.getElementById('reportPaymentsReceived');
+        const elLedger  = document.getElementById('reportSalesLedger');
+        if (!elSummary || !elBranch || !elPay || !elLedger) return;
+        const hideAll = [elSummary, elBranch, elPay, elLedger];
+
+        // Warehouse Manager never sees money — hide every sales section.
+        if (role === 'warehouse_manager') {
+            hideAll.forEach((e) => { e.style.display = 'none'; e.innerHTML = ''; });
+            return;
+        }
+
+        const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
+        const range = computeReportRange();
+        const orders = await fetchSalesData(role, mode, range);
+        const isSuper = isSuperRole(role);
+        const fmtMoney = (n) => CURRENCY + ' ' + money.format(Number(n) || 0);
+        const mkCard = (label, value, hint, kind) =>
+            `<div class="report-card ${kind ? 'report-card--' + kind : ''}"><div class="report-card__label">${label}</div><div class="report-card__value">${value}</div><div class="report-card__hint">${hint}</div></div>`;
+
+        // ----- Summary cards -----
+        const nonCancelled = orders.filter((o) => o.status !== 'cancelled');
+        const fulfilled    = orders.filter((o) => o.status === 'fulfilled');
+        const pending      = orders.filter((o) => o.status === 'pending');
+        const cancelled    = orders.filter((o) => o.status === 'cancelled');
+        const grossSales      = nonCancelled.reduce((s, o) => s + (Number(o.total) || 0), 0);
+        const received        = nonCancelled.filter((o) => o.payment_confirmed).reduce((s, o) => s + (Number(o.total) || 0), 0);
+        const fulfilledValue  = fulfilled.reduce((s, o) => s + (Number(o.total) || 0), 0);
+        const scopeLabel = isSuper ? 'all branches' : (role === 'branch_manager' ? (session.branch_name || 'your branch') : 'your sales');
+        elSummary.style.display = '';
+        elSummary.innerHTML = `
+            <h2>Sales summary <span class="report-section__sub">${range.label} · ${escapeHtml(scopeLabel)}</span></h2>
+            <div class="report-grid">
+                ${mkCard('Total sales', fmtMoney(grossSales), nonCancelled.length + ' invoice' + (nonCancelled.length === 1 ? '' : 's'), 'accent')}
+                ${mkCard('Payment received', fmtMoney(received), 'confirmed payments', 'accent')}
+                ${mkCard('Fulfilled', fmtMoney(fulfilledValue), fulfilled.length + ' dispatched', '')}
+                ${mkCard('Pending', pending.length.toLocaleString(), 'awaiting fulfilment', pending.length ? 'alert' : '')}
+                ${mkCard('Cancelled', cancelled.length.toLocaleString(), 'voided', '')}
+            </div>`;
+
+        // ----- Sales by branch (super-roles only; others are single-branch) -----
+        if (isSuper) {
+            const byBranch = new Map();
+            (branchesList || []).forEach((b) => byBranch.set(b.id, { name: b.name, count: 0, gross: 0, received: 0, fulfilled: 0, pending: 0 }));
+            nonCancelled.forEach((o) => {
+                const k = o.branch_id || '_none';
+                if (!byBranch.has(k)) byBranch.set(k, { name: (o.branch && o.branch.name) || '— Unassigned —', count: 0, gross: 0, received: 0, fulfilled: 0, pending: 0 });
+                const r = byBranch.get(k);
+                r.count += 1; r.gross += Number(o.total) || 0;
+                if (o.payment_confirmed) r.received += Number(o.total) || 0;
+                if (o.status === 'fulfilled') r.fulfilled += 1;
+                if (o.status === 'pending') r.pending += 1;
+            });
+            const rows = Array.from(byBranch.values())
+                .filter((r) => r.count > 0)
+                .sort((a, b) => b.gross - a.gross)
+                .map((r) => `<tr>
+                    <td><strong style="color:var(--c-ink-2);">${escapeHtml(r.name)}</strong></td>
+                    <td>${r.count}</td>
+                    <td><strong>${fmtMoney(r.gross)}</strong></td>
+                    <td>${fmtMoney(r.received)}</td>
+                    <td>${r.fulfilled}</td>
+                    <td>${r.pending > 0 ? '<span class="pill pill--pending">' + r.pending + '</span>' : '—'}</td>
+                </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--c-ink-5);">No sales in this period.</td></tr>`;
+            elBranch.style.display = '';
+            elBranch.innerHTML = `<h2>Sales by branch <span class="report-section__sub">${range.label}</span></h2>
+                <div class="table-scroll"><table class="tbl"><thead><tr><th>Branch</th><th>Invoices</th><th>Total sales</th><th>Received</th><th>Fulfilled</th><th>Pending</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+        } else {
+            elBranch.style.display = 'none'; elBranch.innerHTML = '';
+        }
+
+        // ----- Payments received: by method (cards) + by account (table) -----
+        const byAccount = new Map();
+        const byMethod  = new Map();
+        nonCancelled.forEach((o) => {
+            const amt = Number(o.total) || 0;
+            const confirmed = !!o.payment_confirmed;
+            const m = o.payment_method || 'unknown';
+            if (!byMethod.has(m)) byMethod.set(m, { count: 0, total: 0, received: 0 });
+            const mr = byMethod.get(m); mr.count += 1; mr.total += amt; if (confirmed) mr.received += amt;
+            const acc = o.payment_account;
+            const key = o.payment_account_id || ('method:' + m);
+            const label = acc ? `${acc.provider} — ${acc.account_name}` : `— No account on file (${m}) —`;
+            if (!byAccount.has(key)) byAccount.set(key, { label, method: acc ? acc.method : m, number: acc ? acc.account_number : '', count: 0, total: 0, received: 0 });
+            const ar = byAccount.get(key); ar.count += 1; ar.total += amt; if (confirmed) ar.received += amt;
+        });
+        const methodOrder = ['cash', 'momo', 'pos', 'bank', 'unknown'];
+        const methodCards = methodOrder.filter((m) => byMethod.has(m)).map((m) => {
+            const r = byMethod.get(m);
+            return mkCard(m.toUpperCase(), fmtMoney(r.total), r.count + ' txn · ' + fmtMoney(r.received) + ' received', '');
+        }).join('');
+        const accRows = Array.from(byAccount.values())
+            .sort((a, b) => b.total - a.total)
+            .map((a) => `<tr>
+                <td><strong style="color:var(--c-ink-2);">${escapeHtml(a.label)}</strong>${a.number ? '<br><small style="color:var(--c-ink-5);font-family:var(--f-mono);">' + escapeHtml(a.number) + '</small>' : ''}</td>
+                <td><span class="pay-method-tag">${escapeHtml(a.method)}</span></td>
+                <td>${a.count}</td>
+                <td><strong>${fmtMoney(a.total)}</strong></td>
+                <td>${fmtMoney(a.received)}</td>
+            </tr>`).join('') || `<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--c-ink-5);">No payments in this period.</td></tr>`;
+        elPay.style.display = '';
+        elPay.innerHTML = `<h2>Payments received <span class="report-section__sub">${range.label} · by account &amp; method</span></h2>
+            ${methodCards ? '<div class="report-grid" style="margin-bottom:14px;">' + methodCards + '</div>' : ''}
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>Account</th><th>Method</th><th>Txns</th><th>Total billed</th><th>Confirmed received</th></tr></thead><tbody>${accRows}</tbody></table></div>`;
+
+        // ----- Full sales ledger (every transaction, date + time) -----
+        const LEDGER_CAP = 500;
+        const ledgerRows = orders.slice(0, LEDGER_CAP).map((o) => {
+            const acc = o.payment_account;
+            const accLabel = acc ? escapeHtml(acc.provider + ' — ' + acc.account_name) : '—';
+            const staffName = (o.initiator && o.initiator.name) ? o.initiator.name : '—';
+            const statusPill = o.status === 'fulfilled'
+                ? '<span class="pill pill--paid">Fulfilled</span>'
+                : (o.status === 'cancelled' ? '<span class="pill pill--stock-out">Cancelled</span>' : '<span class="pill pill--pending">Pending</span>');
+            const paidPill = o.payment_confirmed ? '<span class="pill pill--paid">Paid</span>' : '<span class="pill pill--unpaid">Unpaid</span>';
+            return `<tr>
+                <td><span style="font-family:var(--f-mono);font-size:0.8rem;color:var(--c-ink-3);white-space:nowrap;">${fmtDateTime(o.created_at)}</span></td>
+                <td><span class="itemno">${escapeHtml(o.invoice_code || o.code || '—')}</span></td>
+                <td>${escapeHtml((o.branch && o.branch.name) || '—')}</td>
+                <td>${escapeHtml(staffName)}</td>
+                <td>${escapeHtml(o.client_name || '—')}</td>
+                <td><strong>${fmtMoney(o.total)}</strong></td>
+                <td><span class="pay-method-tag">${escapeHtml(o.payment_method || '—')}</span></td>
+                <td>${accLabel}</td>
+                <td>${paidPill}</td>
+                <td>${statusPill}</td>
+            </tr>`;
+        }).join('') || `<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--c-ink-5);">No transactions in this period.</td></tr>`;
+        const note = orders.length > LEDGER_CAP
+            ? `<span class="report-section__sub">Showing latest ${LEDGER_CAP} of ${orders.length} — narrow the range to see more.</span>`
+            : `<span class="report-section__sub">${orders.length} transaction${orders.length === 1 ? '' : 's'} · ${range.label}</span>`;
+        elLedger.style.display = '';
+        elLedger.innerHTML = `<h2>Sales ledger ${note}</h2>
+            <div class="table-scroll"><table class="tbl"><thead><tr><th>Date &amp; time</th><th>Invoice</th><th>Branch</th><th>Staff</th><th>Client</th><th>Amount</th><th>Method</th><th>Account</th><th>Payment</th><th>Status</th></tr></thead><tbody>${ledgerRows}</tbody></table></div>`;
+    }
+
+    // Wire the date-range filter controls.
+    (function wireReportFilter() {
+        const filter = document.getElementById('reportFilter');
+        if (!filter) return;
+        const presets = filter.querySelectorAll('.rf-preset');
+        const fromEl = document.getElementById('reportFrom');
+        const toEl = document.getElementById('reportTo');
+        const applyBtn = document.getElementById('reportApplyRange');
+        presets.forEach((btn) => btn.addEventListener('click', () => {
+            presets.forEach((b) => b.classList.remove('is-active'));
+            btn.classList.add('is-active');
+            reportRange = { preset: btn.dataset.range, from: null, to: null };
+            if (fromEl) fromEl.value = '';
+            if (toEl) toEl.value = '';
+            loadReports();
+        }));
+        if (applyBtn) applyBtn.addEventListener('click', () => {
+            const f = fromEl && fromEl.value;
+            const t = toEl && toEl.value;
+            if (!f && !t) { toast('Pick a "from" and/or "to" date first.', 'error'); return; }
+            if (f && t && f > t) { toast('"From" date must be before "To" date.', 'error'); return; }
+            presets.forEach((b) => b.classList.remove('is-active'));
+            reportRange = { preset: 'custom', from: f || null, to: t || null };
+            loadReports();
+        });
+    })();
+
     els.reportsRefreshBtn.addEventListener('click', loadReports);
 
     /* ---- Export PDF -------------------------------------------------- */
@@ -3478,16 +3701,32 @@
         }
         try {
             els.reportsExportPdfBtn.disabled = true;
-            const { branches: br, products: prods, staff: stf } = await window.CH.reports.overview();
-            const visibleProducts = session.is_admin ? prods : prods.filter((p) => p.branch_id === session.branch_id);
-            const visibleBranches = session.is_admin ? br : br.filter((b) => b.id === session.branch_id);
+            const role = currentRole();
+            const { branches: br, products: prods, staff: stfRaw } = await window.CH.reports.overview();
+            // System Admin accounts never appear in the exported report either.
+            const stf = (stfRaw || []).filter((s) => !isSystemAdminStaff(s));
+            const visibleProducts = isSuperRole(role) ? prods : prods.filter((p) => p.branch_id === session.branch_id);
+            const visibleBranches = isSuperRole(role) ? br : br.filter((b) => b.id === session.branch_id);
+
+            // Sales + payments — same date window + role scope as the on-screen
+            // report. Skipped for Warehouse Manager (money hidden).
+            let salesPayload = null;
+            if (role !== 'warehouse_manager') {
+                const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
+                const range = computeReportRange();
+                const orders = await fetchSalesData(role, mode, range).catch(() => []);
+                salesPayload = { orders, rangeLabel: range.label, role };
+            }
+
             await window.CH.pdf.exportReport({
                 session,
+                role,
                 currency: CURRENCY,
                 branches: visibleBranches,
                 products: visibleProducts,
                 staff: stf,
                 lowThreshold: LOW_STOCK_THRESHOLD,
+                sales: salesPayload,
             });
             toast('Report PDF downloaded.', 'success');
         } catch (err) {
@@ -5045,6 +5284,21 @@
         return role === 'admin' || role === 'system_manager';
     }
 
+    // Identifies a System Admin staff record. The canonical signal is
+    // role === 'system_manager'. We also catch the legacy super account that
+    // was seeded as 'admin' but named "System Admin" so it is hidden from the
+    // staff directory even before the role-promotion migration is applied.
+    // System Admin is the overall manager (above the Director) and is kept out
+    // of every staff listing, dropdown and report count for ALL viewers.
+    function isSystemAdminStaff(s) {
+        if (!s) return false;
+        if (s.role === 'system_manager') return true;
+        const name = String(s.name || '').trim().toLowerCase();
+        return name === 'system admin' || name === 'systemadmin' || name === 'sysadmin';
+    }
+    // Expose so other modules / inline handlers can reuse the same rule.
+    try { window.isSystemAdminStaff = isSystemAdminStaff; } catch (_) {}
+
     // Returns the set of branch_ids a session covers, OR the sentinel 'ALL'.
     // Used by every role-scoped loader. Considers:
     //   - admin / manages_all_branches  -> 'ALL'
@@ -6509,7 +6763,7 @@
         // Prefer a real, printable subject: skip System Admin (infra account
         // that doesn't get cards printed) and prefer staff who actually have
         // a staff_code assigned. Fall back to a synthetic preview if needed.
-        const list = (staffList || []).filter((s) => s.name && s.role !== 'system_manager');
+        const list = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s));
         const withCode = list.find((s) => s.staff_code);
         const subject = withCode || list[0] || {
             id: 'preview',
@@ -6648,7 +6902,7 @@
             }
             // System Admin users are infrastructure accounts — they don't
             // get printed cards. Everyone else with a name is printable.
-            const list = (staffList || []).filter((s) => s.name && s.role !== 'system_manager');
+            const list = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s));
             if (list.length === 0) { toast('No staff to print.', 'error'); return; }
             const cards = list.map((s) => buildIdCardHtml(s, idCardSettings)).join('');
             const win = window.open('', '_blank');

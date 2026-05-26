@@ -88,7 +88,8 @@
         doc.setFont('helvetica', 'normal');
         doc.setFontSize(11);
         doc.setTextColor(180, 220, 255);
-        doc.text(BRAND.tagline.toUpperCase(), M + 64, 68);
+        const reportTitle = opts.sales ? 'Business Report' : 'Inventory Report';
+        doc.text(reportTitle.toUpperCase(), M + 64, 68);
 
         // Right-aligned metadata
         const today = new Date();
@@ -115,39 +116,33 @@
         const lowStock = opts.products.filter((p) => (Number(p.stock) || 0) > 0 && (Number(p.stock) || 0) <= opts.lowThreshold).length;
         const outOfStock = opts.products.filter((p) => (Number(p.stock) || 0) <= 0).length;
 
+        // Role-aware money visibility: Warehouse Managers never see money;
+        // Inventory value is for super-roles (Director / System Admin) only.
+        const isSuper = opts.role === 'admin' || opts.role === 'system_manager';
+        const hideMoney = opts.role === 'warehouse_manager';
         const cards = [
             { label: 'Total products',  value: totalProducts.toLocaleString(),               accent: BRAND.accent },
             { label: 'Stock units',     value: totalUnits.toLocaleString(),                  accent: BRAND.ink2 },
-            { label: 'Inventory value', value: fmtMoney(opts.currency, totalValue),          accent: BRAND.accent },
+        ];
+        if (!hideMoney && isSuper) {
+            cards.push({ label: 'Inventory value', value: fmtMoney(opts.currency, totalValue), accent: BRAND.accent });
+        }
+        cards.push(
             { label: 'Low stock',       value: lowStock.toLocaleString(),                    accent: lowStock ? BRAND.warn : BRAND.ink3 },
             { label: 'Out of stock',    value: outOfStock.toLocaleString(),                  accent: outOfStock ? BRAND.danger : BRAND.ink3 },
             { label: 'Branches',        value: opts.branches.length.toLocaleString(),        accent: BRAND.ink2 },
-        ];
-        const cardCols = 3;
-        const cardGap = 10;
-        const cardW = (pageW - M * 2 - cardGap * (cardCols - 1)) / cardCols;
-        const cardH = 60;
-        cards.forEach((c, i) => {
-            const col = i % cardCols;
-            const row = Math.floor(i / cardCols);
-            const x = M + col * (cardW + cardGap);
-            const y = cursorY + row * (cardH + cardGap);
-            doc.setFillColor(...BRAND.bg);
-            doc.setDrawColor(...BRAND.line);
-            doc.roundedRect(x, y, cardW, cardH, 4, 4, 'FD');
-            doc.setTextColor(...BRAND.ink3);
-            doc.setFontSize(7.5);
-            doc.setFont('helvetica', 'bold');
-            doc.text(c.label.toUpperCase(), x + 12, y + 18);
-            doc.setTextColor(...c.accent);
-            doc.setFontSize(15);
-            doc.setFont('helvetica', 'bold');
-            doc.text(String(c.value), x + 12, y + 42);
-        });
-        cursorY += Math.ceil(cards.length / cardCols) * (cardH + cardGap) + 14;
+        );
+        drawCardGrid(cards);
 
-        // ---- BRANCH BREAKDOWN ----------------------------------------------
-        section('Per-branch breakdown');
+        // ---- SALES & PAYMENTS (date-scoped, role-tailored) -----------------
+        // Only when sales data is supplied and the role may see money.
+        if (opts.sales && opts.sales.role !== 'warehouse_manager') {
+            renderSalesSections(opts.sales);
+        }
+
+        // ---- BRANCH BREAKDOWN (inventory) ----------------------------------
+        if (cursorY > pageH - 180) { doc.addPage(); cursorY = M + 20; }
+        section('Inventory by branch');
         const branchRows = opts.branches.map((b) => {
             const bp = opts.products.filter((p) => p.branch_id === b.id);
             const units = bp.reduce((s, p) => s + (Number(p.stock) || 0), 0);
@@ -155,12 +150,18 @@
             const low = bp.filter((p) => (Number(p.stock) || 0) > 0 && (Number(p.stock) || 0) <= opts.lowThreshold).length;
             const out = bp.filter((p) => (Number(p.stock) || 0) <= 0).length;
             const staffN = opts.staff.filter((s) => s.branch_id === b.id).length;
-            return [b.name, bp.length, units.toLocaleString(), fmtMoney(opts.currency, value), low || '—', out || '—', staffN];
+            const base = [b.name, bp.length, units.toLocaleString()];
+            if (!hideMoney) base.push(fmtMoney(opts.currency, value));
+            base.push(low || '—', out || '—', staffN);
+            return base;
         });
+        const branchHead = hideMoney
+            ? ['Branch', 'Products', 'Stock', 'Low', 'Out', 'Staff']
+            : ['Branch', 'Products', 'Stock', 'Value', 'Low', 'Out', 'Staff'];
         autoTable({
             startY: cursorY,
-            head: [['Branch', 'Products', 'Stock', 'Value', 'Low', 'Out', 'Staff']],
-            body: branchRows.length ? branchRows : [['No branches yet', '', '', '', '', '', '']],
+            head: [branchHead],
+            body: branchRows.length ? branchRows : [Array(branchHead.length).fill('')],
         });
         cursorY = doc.lastAutoTable.finalY + 18;
 
@@ -178,11 +179,18 @@
         });
         const catRows = Array.from(catMap.entries())
             .sort((a, b) => b[1].value - a[1].value)
-            .map(([cat, c]) => [cat, c.count, c.units.toLocaleString(), fmtMoney(opts.currency, c.value)]);
+            .map(([cat, c]) => {
+                const row = [cat, c.count, c.units.toLocaleString()];
+                if (!hideMoney) row.push(fmtMoney(opts.currency, c.value));
+                return row;
+            });
+        const catHead = hideMoney
+            ? ['Category', 'Products', 'Stock units']
+            : ['Category', 'Products', 'Stock units', 'Inventory value'];
         autoTable({
             startY: cursorY,
-            head: [['Category', 'Products', 'Stock units', 'Inventory value']],
-            body: catRows.length ? catRows : [['No products yet', '', '', '']],
+            head: [catHead],
+            body: catRows.length ? catRows : [Array(catHead.length).fill('')],
         });
         cursorY = doc.lastAutoTable.finalY + 18;
 
@@ -271,6 +279,145 @@
                 alternateRowStyles: { fillColor: BRAND.bg },
                 theme: 'grid',
             }, config));
+        }
+
+        // Draw a 3-column grid of summary cards starting at cursorY and
+        // advance cursorY past them. Adds a page break if they won't fit.
+        function drawCardGrid(cards) {
+            if (!cards || !cards.length) return;
+            const cols = 3, gap = 10;
+            const w = (pageW - M * 2 - gap * (cols - 1)) / cols;
+            const h = 60;
+            const rows = Math.ceil(cards.length / cols);
+            if (cursorY + rows * (h + gap) > pageH - 70) { doc.addPage(); cursorY = M + 20; }
+            cards.forEach((c, i) => {
+                const col = i % cols, row = Math.floor(i / cols);
+                const x = M + col * (w + gap);
+                const y = cursorY + row * (h + gap);
+                doc.setFillColor(...BRAND.bg);
+                doc.setDrawColor(...BRAND.line);
+                doc.roundedRect(x, y, w, h, 4, 4, 'FD');
+                doc.setTextColor(...BRAND.ink3);
+                doc.setFontSize(7.5); doc.setFont('helvetica', 'bold');
+                doc.text(String(c.label).toUpperCase(), x + 12, y + 18);
+                doc.setTextColor(...(c.accent || BRAND.ink2));
+                doc.setFontSize(15); doc.setFont('helvetica', 'bold');
+                doc.text(String(c.value), x + 12, y + 42);
+            });
+            cursorY += rows * (h + gap) + 14;
+        }
+
+        // Sales summary + per-branch sales + payments received + full ledger.
+        // Mirrors the on-screen report; date-scoped & role-scoped by the caller.
+        function renderSalesSections(sales) {
+            const orders = sales.orders || [];
+            const rangeLabel = sales.rangeLabel || 'All time';
+            const isSuper = sales.role === 'admin' || sales.role === 'system_manager';
+            const cur = opts.currency;
+
+            const nonCancelled = orders.filter((o) => o.status !== 'cancelled');
+            const fulfilled = orders.filter((o) => o.status === 'fulfilled');
+            const pending = orders.filter((o) => o.status === 'pending');
+            const cancelled = orders.filter((o) => o.status === 'cancelled');
+            const grossSales = nonCancelled.reduce((s, o) => s + (Number(o.total) || 0), 0);
+            const received = nonCancelled.filter((o) => o.payment_confirmed).reduce((s, o) => s + (Number(o.total) || 0), 0);
+            const fulfilledValue = fulfilled.reduce((s, o) => s + (Number(o.total) || 0), 0);
+
+            // --- Sales summary cards ---
+            if (cursorY > pageH - 200) { doc.addPage(); cursorY = M + 20; }
+            section('Sales summary  ·  ' + rangeLabel);
+            drawCardGrid([
+                { label: 'Total sales',      value: fmtMoney(cur, grossSales),            accent: BRAND.accent },
+                { label: 'Payment received', value: fmtMoney(cur, received),              accent: BRAND.success },
+                { label: 'Fulfilled',        value: fmtMoney(cur, fulfilledValue),        accent: BRAND.ink2 },
+                { label: 'Invoices',         value: nonCancelled.length.toLocaleString(), accent: BRAND.ink2 },
+                { label: 'Pending',          value: pending.length.toLocaleString(),      accent: pending.length ? BRAND.warn : BRAND.ink3 },
+                { label: 'Cancelled',        value: cancelled.length.toLocaleString(),    accent: cancelled.length ? BRAND.danger : BRAND.ink3 },
+            ]);
+
+            // --- Sales by branch (super-roles only) ---
+            if (isSuper) {
+                const byBranch = new Map();
+                (opts.branches || []).forEach((b) => byBranch.set(b.id, { name: b.name, count: 0, gross: 0, received: 0, fulfilled: 0, pending: 0 }));
+                nonCancelled.forEach((o) => {
+                    const k = o.branch_id || '_none';
+                    if (!byBranch.has(k)) byBranch.set(k, { name: (o.branch && o.branch.name) || '— Unassigned —', count: 0, gross: 0, received: 0, fulfilled: 0, pending: 0 });
+                    const r = byBranch.get(k);
+                    r.count += 1; r.gross += Number(o.total) || 0;
+                    if (o.payment_confirmed) r.received += Number(o.total) || 0;
+                    if (o.status === 'fulfilled') r.fulfilled += 1;
+                    if (o.status === 'pending') r.pending += 1;
+                });
+                const rows = Array.from(byBranch.values()).filter((r) => r.count > 0).sort((a, b) => b.gross - a.gross)
+                    .map((r) => [r.name, r.count, fmtMoney(cur, r.gross), fmtMoney(cur, r.received), r.fulfilled, r.pending || '—']);
+                if (cursorY > pageH - 160) { doc.addPage(); cursorY = M + 20; }
+                section('Sales by branch');
+                autoTable({ startY: cursorY, head: [['Branch', 'Invoices', 'Total sales', 'Received', 'Fulfilled', 'Pending']], body: rows.length ? rows : [['No sales in this period', '', '', '', '', '']] });
+                cursorY = doc.lastAutoTable.finalY + 18;
+            }
+
+            // --- Payments received: by method + by account ---
+            const byMethod = new Map();
+            const byAccount = new Map();
+            nonCancelled.forEach((o) => {
+                const amt = Number(o.total) || 0; const confirmed = !!o.payment_confirmed;
+                const m = o.payment_method || 'unknown';
+                if (!byMethod.has(m)) byMethod.set(m, { count: 0, total: 0, received: 0 });
+                const mr = byMethod.get(m); mr.count += 1; mr.total += amt; if (confirmed) mr.received += amt;
+                const acc = o.payment_account;
+                const key = o.payment_account_id || ('method:' + m);
+                const label = acc ? (acc.provider + ' — ' + acc.account_name) : ('No account (' + m + ')');
+                if (!byAccount.has(key)) byAccount.set(key, { label, method: acc ? acc.method : m, number: acc ? acc.account_number : '', count: 0, total: 0, received: 0 });
+                const ar = byAccount.get(key); ar.count += 1; ar.total += amt; if (confirmed) ar.received += amt;
+            });
+            if (cursorY > pageH - 160) { doc.addPage(); cursorY = M + 20; }
+            section('Payments received  ·  by method');
+            const methodOrder = ['cash', 'momo', 'pos', 'bank', 'unknown'];
+            const methodRows = methodOrder.filter((m) => byMethod.has(m)).map((m) => { const r = byMethod.get(m); return [m.toUpperCase(), r.count, fmtMoney(cur, r.total), fmtMoney(cur, r.received)]; });
+            autoTable({ startY: cursorY, head: [['Method', 'Txns', 'Total billed', 'Confirmed received']], body: methodRows.length ? methodRows : [['No payments in this period', '', '', '']] });
+            cursorY = doc.lastAutoTable.finalY + 14;
+            const accRows = Array.from(byAccount.values()).sort((a, b) => b.total - a.total).map((a) => [a.label + (a.number ? '\n' + a.number : ''), a.method, a.count, fmtMoney(cur, a.total), fmtMoney(cur, a.received)]);
+            if (accRows.length) {
+                if (cursorY > pageH - 140) { doc.addPage(); cursorY = M + 20; }
+                section('Payments received  ·  by account');
+                autoTable({ startY: cursorY, head: [['Account', 'Method', 'Txns', 'Total billed', 'Confirmed received']], body: accRows });
+                cursorY = doc.lastAutoTable.finalY + 18;
+            }
+
+            // --- Full sales ledger (every transaction, date + time) ---
+            if (cursorY > pageH - 160) { doc.addPage(); cursorY = M + 20; }
+            const LEDGER_CAP = 400;
+            section('Sales ledger  ·  ' + (orders.length > LEDGER_CAP ? ('latest ' + LEDGER_CAP + ' of ' + orders.length) : (orders.length + ' transaction' + (orders.length === 1 ? '' : 's'))));
+            const ledgerRows = orders.slice(0, LEDGER_CAP).map((o) => {
+                const acc = o.payment_account;
+                return [
+                    fmtDT(o.created_at),
+                    o.invoice_code || o.code || '—',
+                    (o.branch && o.branch.name) || '—',
+                    (o.initiator && o.initiator.name) || '—',
+                    o.client_name || '—',
+                    fmtMoney(cur, o.total),
+                    (o.payment_method || '—') + (o.payment_confirmed ? ' ✓' : ''),
+                    acc ? (acc.provider + ' — ' + acc.account_name) : '—',
+                    (o.status || '').toUpperCase(),
+                ];
+            });
+            autoTable({
+                startY: cursorY,
+                head: [['Date & time', 'Invoice', 'Branch', 'Staff', 'Client', 'Amount', 'Method', 'Account', 'Status']],
+                body: ledgerRows.length ? ledgerRows : [['No transactions in this period', '', '', '', '', '', '', '', '']],
+                styles: { font: 'helvetica', fontSize: 7.2, cellPadding: 4, overflow: 'linebreak', textColor: BRAND.ink2, lineColor: BRAND.line, lineWidth: 0.4 },
+                headStyles: { fillColor: BRAND.navy, textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.2, cellPadding: 5 },
+                columnStyles: { 0: { cellWidth: 70 }, 5: { halign: 'right' } },
+            });
+            cursorY = doc.lastAutoTable.finalY + 18;
+
+            function fmtDT(ts) {
+                if (!ts) return '—';
+                const d = new Date(ts);
+                if (isNaN(d.getTime())) return '—';
+                return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
         }
     }
 

@@ -319,7 +319,7 @@
             const [branchesRes, productsRes, staffRes] = await Promise.all([
                 client.from('branches').select('*'),
                 applyEnvFilter(client.from('products').select('id,item_no,description,branch_id,price,stock,category,material,color,supplier,image_url,created_at')),
-                client.from('staff_view').select('id,branch_id,is_admin'),
+                client.from('staff_view').select('id,name,role,branch_id,is_admin'),
             ]);
             if (branchesRes.error)  throw branchesRes.error;
             if (productsRes.error)  throw productsRes.error;
