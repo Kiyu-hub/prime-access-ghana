@@ -147,7 +147,7 @@ Audit feed. Every sale, transfer, role change, product edit/delete, and account 
 - **Out-of-stock product transfer button** strictly checks: 2+ warehouses exist, another warehouse (different branch) actually holds the item with stock > 0, AND that warehouse isn't otherwise empty.
 - **Transfer "Not paid"**: payment method/account fields hide entirely. The form can't be submitted until you've actually paid and switched to "Paid".
 - **Internal vs external delivery** — internal goes to your branch, external requires a phone + address before submission.
-- **Page access is controllable** — the System Admin can tick/untick which pages each role (including the Director) may open, from the System Admin-only **Permissions** page. A blocked page disappears from that role's menu and cannot be opened. Only the System Admin can see or change this; the System Admin is never restricted.
+- **Page access is controllable** — from the System Admin-only **Permissions** page. **By role** is one table where you tick/untick pages for each role (including the Director). **By user** lets you pick one person and set exactly which pages they see. A blocked page disappears from the menu and cannot be opened. Only the System Admin can see or change this; the System Admin is never restricted.
 - **Dev mode is private to the System Admin** — only the System Admin can enter Dev (sandbox) mode, and it never affects any other user's data or operations. Everyone else always works in Live mode.
 
 ---

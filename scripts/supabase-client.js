@@ -940,6 +940,25 @@
                 .upsert({ role, denied_views: deniedViews, updated_at: new Date().toISOString() }, { onConflict: 'role' });
             if (error) throw error;
         },
+        // Per-user overrides (Phase 7). Returns { staff_id: [deniedView, ...] }.
+        async getAllUsers() {
+            try {
+                const { data, error } = await client.from('user_permissions').select('staff_id, denied_views');
+                if (error) throw error;
+                const map = {};
+                (data || []).forEach((r) => {
+                    let v = r.denied_views;
+                    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (_) { v = []; } }
+                    map[r.staff_id] = Array.isArray(v) ? v : [];
+                });
+                return map;
+            } catch (_) { return {}; }
+        },
+        async setUserDenied(staffId, deniedViews) {
+            const { error } = await client.from('user_permissions')
+                .upsert({ staff_id: staffId, denied_views: deniedViews, updated_at: new Date().toISOString() }, { onConflict: 'staff_id' });
+            if (error) throw error;
+        },
     };
 
     /* ---- dev/live mode helpers (Phase 4) -------------------- */

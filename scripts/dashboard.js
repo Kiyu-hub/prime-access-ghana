@@ -337,13 +337,16 @@
                 return;
             }
         }
-        // Permission guard: the System Admin can block specific pages per role
-        // (System Admin itself is never restricted).
-        if (currentRole() !== 'system_manager' && deniedViewsForRole(currentRole()).includes(view)) {
-            toast('You do not have access to that page.', 'error');
-            const allowed = (VIEWS_BY_ROLE[currentRole()] || ['products']).find((v) => !deniedViewsForRole(currentRole()).includes(v)) || 'products';
-            if (allowed && allowed !== view) switchView(allowed);
-            return;
+        // Permission guard: the System Admin can block pages per role AND per
+        // individual user (System Admin itself is never restricted).
+        if (currentRole() !== 'system_manager') {
+            const myDenied = deniedViewsForCurrentUser();
+            if (myDenied.includes(view)) {
+                toast('You do not have access to that page.', 'error');
+                const allowed = (VIEWS_BY_ROLE[currentRole()] || ['products']).find((v) => !myDenied.includes(v)) || 'products';
+                if (allowed && allowed !== view) switchView(allowed);
+                return;
+            }
         }
         if (view !== currentView) previousView = currentView || 'products';
         currentView = view;
@@ -7034,7 +7037,11 @@
         ['admin', 'Director'], ['branch_manager', 'Branch Manager'],
         ['warehouse_manager', 'Warehouse Manager'], ['staff', 'Staff'],
     ];
-    let permissionsCache = {}; // { role: [deniedView, ...] }
+    const PERMISSION_ROLE_LABEL = Object.fromEntries(PERMISSION_ROLES);
+    let permissionsCache = {};      // { role: [deniedView, ...] }
+    let userPermissionsCache = {};  // { staff_id: [deniedView, ...] }
+    let activePermTab = 'role';
+    let selectedPermUserId = '';
 
     // Denied views for a role. System Admin is never restricted.
     function deniedViewsForRole(role) {
@@ -7042,32 +7049,49 @@
         const list = permissionsCache[role];
         return Array.isArray(list) ? list : [];
     }
+    function deniedViewsForUser(staffId) {
+        const list = userPermissionsCache[staffId];
+        return Array.isArray(list) ? list : [];
+    }
+    // Effective denials for the SIGNED-IN user = role denials ∪ their own.
+    function deniedViewsForCurrentUser() {
+        if (currentRole() === 'system_manager') return [];
+        const roleD = deniedViewsForRole(currentRole());
+        const userD = session ? deniedViewsForUser(session.id) : [];
+        return Array.from(new Set([...roleD, ...userD]));
+    }
 
     // Hide denied nav links for the CURRENT user and bounce them off a denied
     // page if they're on one. Non-denied links revert to CSS-governed display.
     function applyRolePermissionsToSelf() {
-        const role = currentRole();
-        const denied = new Set(deniedViewsForRole(role));
+        const denied = new Set(deniedViewsForCurrentUser());
         PERMISSION_VIEWS.forEach(([view]) => {
             document.querySelectorAll('.nav a[data-view="' + view + '"]').forEach((a) => {
                 a.style.display = denied.has(view) ? 'none' : '';
             });
         });
         if (denied.has(currentView)) {
-            const fallback = (VIEWS_BY_ROLE[role] || ['products']).find((v) => !denied.has(v)) || 'products';
+            const fallback = (VIEWS_BY_ROLE[currentRole()] || ['products']).find((v) => !denied.has(v)) || 'products';
             if (fallback !== currentView) switchView(fallback);
         }
     }
 
     async function loadPermissionsOnBoot() {
         try {
-            if (window.CH && window.CH.permissions) permissionsCache = await window.CH.permissions.getAll();
-        } catch (_) { permissionsCache = {}; }
+            if (window.CH && window.CH.permissions) {
+                const [roleMap, userMap] = await Promise.all([
+                    window.CH.permissions.getAll(),
+                    window.CH.permissions.getAllUsers(),
+                ]);
+                permissionsCache = roleMap || {};
+                userPermissionsCache = userMap || {};
+            }
+        } catch (_) { permissionsCache = {}; userPermissionsCache = {}; }
         applyRolePermissionsToSelf();
     }
     loadPermissionsOnBoot();
 
-    // Render the System Admin permissions matrix (one card per role).
+    // ----- "By role" matrix: one table, rows = pages, columns = roles -----
     function renderPermissions() {
         const host = document.getElementById('permissionsHost');
         if (!host) return;
@@ -7075,48 +7099,95 @@
             host.innerHTML = '<p style="color:var(--c-ink-5);">Only the System Admin can manage permissions.</p>';
             return;
         }
-        host.innerHTML = PERMISSION_ROLES.map(([role, label]) => {
-            const base = VIEWS_BY_ROLE[role] || [];
-            const views = PERMISSION_VIEWS.filter(([v]) => base.includes(v));
-            const denied = new Set(deniedViewsForRole(role));
-            const allowed = views.filter(([v]) => !denied.has(v)).length;
-            const rows = views.map(([v, vlabel]) => `
-                <label class="perms-toggle">
-                    <input type="checkbox" data-perm-role="${role}" data-perm-view="${v}" ${denied.has(v) ? '' : 'checked'} />
-                    <span>${escapeHtml(vlabel)}</span>
-                </label>`).join('') || '<p style="color:var(--c-ink-5);font-size:0.86rem;">No manageable pages for this role.</p>';
-            return `<div class="perms-role-card" data-role-card="${role}">
-                <div class="perms-role-card__head">
-                    <span class="perms-role-card__title">${escapeHtml(label)}</span>
-                    <span class="perms-role-card__count" data-count-for="${role}">${allowed}/${views.length} pages</span>
-                </div>
-                <div class="perms-list">${rows}</div>
-                <div class="perms-role-card__actions">
-                    <button type="button" class="perms-mini-btn" data-perm-all="${role}">Allow all</button>
-                    <button type="button" class="perms-mini-btn" data-perm-none="${role}">Block all</button>
-                </div>
-            </div>`;
+        const heads = PERMISSION_ROLES.map(([role, label]) =>
+            `<th style="text-align:center;">${escapeHtml(label)}<br><label class="perms-col-all"><input type="checkbox" data-perm-col="${role}" /> all</label></th>`).join('');
+        const rows = PERMISSION_VIEWS.map(([v, vlabel]) => {
+            const cells = PERMISSION_ROLES.map(([role]) => {
+                const base = VIEWS_BY_ROLE[role] || [];
+                if (!base.includes(v)) return '<td style="text-align:center;color:var(--c-ink-5);">—</td>';
+                const denied = deniedViewsForRole(role).includes(v);
+                return `<td style="text-align:center;"><input type="checkbox" data-perm-role="${role}" data-perm-view="${v}" ${denied ? '' : 'checked'} /></td>`;
+            }).join('');
+            return `<tr><td>${escapeHtml(vlabel)}</td>${cells}</tr>`;
         }).join('');
+        host.innerHTML = `<div class="table-scroll"><table class="tbl perms-table">
+            <thead><tr><th>Page</th>${heads}</tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>
+        <p class="perms-user-empty">Ticked = the page shows for that role. Unticked = hidden and blocked. You (System Admin) are never affected.</p>`;
+    }
+
+    // ----- "By user" table: one user's page visibility -----
+    async function ensureStaffLoaded() {
+        if (!staffList || staffList.length === 0) {
+            try { staffList = await window.CH.staff.list(); } catch (_) {}
+        }
+    }
+    async function populatePermsUserSelect() {
+        const sel = document.getElementById('permsUserSelect');
+        if (!sel) return;
+        await ensureStaffLoaded();
+        // Everyone except System Admins (who are never restricted).
+        const users = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        sel.innerHTML = ['<option value="">— Select a user —</option>']
+            .concat(users.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} · ${escapeHtml(PERMISSION_ROLE_LABEL[s.role] || s.role || 'Staff')}</option>`))
+            .join('');
+        if (selectedPermUserId) sel.value = selectedPermUserId;
+    }
+    function renderUserPermissions(staffId) {
+        const host = document.getElementById('permsUserHost');
+        if (!host) return;
+        if (!staffId) { host.innerHTML = '<p class="perms-user-empty">Pick a user above to set which pages they can see.</p>'; return; }
+        const u = (staffList || []).find((s) => s.id === staffId);
+        if (!u) { host.innerHTML = '<p class="perms-user-empty">User not found.</p>'; return; }
+        const role = ['staff', 'branch_manager', 'warehouse_manager', 'admin', 'system_manager'].includes(u.role) ? u.role : 'staff';
+        const base = VIEWS_BY_ROLE[role] || [];
+        const views = PERMISSION_VIEWS.filter(([v]) => base.includes(v));
+        const userDenied = new Set(deniedViewsForUser(staffId));
+        const roleDenied = new Set(deniedViewsForRole(role));
+        const rows = views.map(([v, vlabel]) => {
+            const note = roleDenied.has(v) ? ' <small style="color:var(--c-ink-5);">(also blocked for the whole role)</small>' : '';
+            return `<tr><td>${escapeHtml(vlabel)}${note}</td>
+                <td style="text-align:center;"><input type="checkbox" data-perm-user-view="${v}" ${userDenied.has(v) ? '' : 'checked'} /></td></tr>`;
+        }).join('') || '<tr><td colspan="2" class="perms-user-empty">No manageable pages for this user.</td></tr>';
+        host.innerHTML = `<div class="table-scroll"><table class="tbl perms-table">
+            <thead><tr><th>Page</th><th style="text-align:center;">Visible to ${escapeHtml(u.name)}</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>
+        <p class="perms-user-empty">Ticked = visible for this user. Unticked = hidden for this user only. Role-level blocks still apply on top.</p>`;
     }
 
     async function savePermissions() {
         if (currentRole() !== 'system_manager') return;
-        const host = document.getElementById('permissionsHost');
-        if (!host) return;
-        const deniedByRole = {};
-        PERMISSION_ROLES.forEach(([role]) => { deniedByRole[role] = []; });
-        host.querySelectorAll('input[data-perm-role]').forEach((cb) => {
-            if (!cb.checked) deniedByRole[cb.dataset.permRole].push(cb.dataset.permView);
-        });
         const btn = document.getElementById('permsSaveBtn');
         try {
             if (btn) btn.disabled = true;
-            for (const [role, denied] of Object.entries(deniedByRole)) {
-                await window.CH.permissions.setDenied(role, denied);
+            if (activePermTab === 'user') {
+                if (!selectedPermUserId) { toast('Pick a user first.', 'error'); return; }
+                const host = document.getElementById('permsUserHost');
+                const denied = [];
+                host.querySelectorAll('input[data-perm-user-view]').forEach((cb) => {
+                    if (!cb.checked) denied.push(cb.dataset.permUserView);
+                });
+                await window.CH.permissions.setUserDenied(selectedPermUserId, denied);
+                userPermissionsCache[selectedPermUserId] = denied;
+                if (session && selectedPermUserId === session.id) applyRolePermissionsToSelf();
+                toast('Saved. ' + ((staffList.find((s) => s.id === selectedPermUserId) || {}).name || 'User') + ' sees the change on their next page load.', 'success');
+            } else {
+                const host = document.getElementById('permissionsHost');
+                const deniedByRole = {};
+                PERMISSION_ROLES.forEach(([role]) => { deniedByRole[role] = []; });
+                host.querySelectorAll('input[data-perm-role]').forEach((cb) => {
+                    if (!cb.checked) deniedByRole[cb.dataset.permRole].push(cb.dataset.permView);
+                });
+                for (const [role, denied] of Object.entries(deniedByRole)) {
+                    await window.CH.permissions.setDenied(role, denied);
+                }
+                permissionsCache = deniedByRole;
+                applyRolePermissionsToSelf();
+                toast('Permissions saved. Affected users see the change on their next page load.', 'success');
             }
-            permissionsCache = deniedByRole;
-            applyRolePermissionsToSelf();
-            toast('Permissions saved. Affected users see the change on their next page load.', 'success');
         } catch (e) {
             toast('Could not save permissions: ' + (e.message || 'unknown'), 'error');
         } finally {
@@ -7125,27 +7196,34 @@
     }
 
     (function wirePermissions() {
-        const host = document.getElementById('permissionsHost');
         const saveBtn = document.getElementById('permsSaveBtn');
         if (saveBtn) saveBtn.addEventListener('click', savePermissions);
-        if (!host) return;
-        function countFor(role) {
-            const cbs = host.querySelectorAll('input[data-perm-role="' + role + '"]');
-            const allowed = Array.from(cbs).filter((c) => c.checked).length;
-            const el = host.querySelector('[data-count-for="' + role + '"]');
-            if (el) el.textContent = allowed + '/' + cbs.length + ' pages';
-        }
-        host.addEventListener('change', (e) => {
-            const cb = e.target.closest('input[data-perm-role]');
-            if (cb) countFor(cb.dataset.permRole);
+
+        // Tab switching.
+        const byRole = document.getElementById('permsByRole');
+        const byUser = document.getElementById('permsByUser');
+        document.querySelectorAll('.perms-tab').forEach((tab) => tab.addEventListener('click', () => {
+            document.querySelectorAll('.perms-tab').forEach((t) => t.classList.remove('is-active'));
+            tab.classList.add('is-active');
+            activePermTab = tab.dataset.permTab;
+            if (byRole) byRole.style.display = activePermTab === 'role' ? '' : 'none';
+            if (byUser) byUser.style.display = activePermTab === 'user' ? '' : 'none';
+            if (activePermTab === 'user') populatePermsUserSelect().then(() => renderUserPermissions(selectedPermUserId));
+        }));
+
+        // Column "all" toggles for the role matrix.
+        const roleHost = document.getElementById('permissionsHost');
+        if (roleHost) roleHost.addEventListener('change', (e) => {
+            const colCb = e.target.closest('input[data-perm-col]');
+            if (!colCb) return;
+            roleHost.querySelectorAll('input[data-perm-role="' + colCb.dataset.permCol + '"]').forEach((cb) => { cb.checked = colCb.checked; });
         });
-        host.addEventListener('click', (e) => {
-            const allBtn = e.target.closest('[data-perm-all]');
-            const noneBtn = e.target.closest('[data-perm-none]');
-            const role = allBtn ? allBtn.dataset.permAll : (noneBtn ? noneBtn.dataset.permNone : null);
-            if (!role) return;
-            host.querySelectorAll('input[data-perm-role="' + role + '"]').forEach((cb) => { cb.checked = !!allBtn; });
-            countFor(role);
+
+        // User picker.
+        const userSel = document.getElementById('permsUserSelect');
+        if (userSel) userSel.addEventListener('change', () => {
+            selectedPermUserId = userSel.value || '';
+            renderUserPermissions(selectedPermUserId);
         });
     })();
 

@@ -3491,7 +3491,12 @@
         }
 
         /* ---------- PERMISSIONS PANEL ---------- */
-        .perms-host { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+        .perms-host { display: block; }
+        .perms-table th, .perms-table td { white-space: nowrap; vertical-align: middle; }
+        .perms-table td:first-child, .perms-table th:first-child { white-space: normal; min-width: 160px; }
+        .perms-table input[type="checkbox"] { width: 17px; height: 17px; accent-color: var(--c-accent); cursor: pointer; }
+        .perms-col-all { display: inline-flex; align-items: center; gap: 4px; font-size: 0.68rem; font-weight: 400; color: var(--c-ink-5); text-transform: none; letter-spacing: 0; margin-top: 4px; cursor: pointer; }
+        .perms-col-all input { width: 13px; height: 13px; }
         .perms-role-card {
             background: var(--c-white); border: 1px solid var(--c-line);
             border-radius: var(--r-lg); padding: 18px 20px; box-shadow: var(--shadow-sm);
@@ -3516,6 +3521,23 @@
             padding: 4px 10px; cursor: pointer;
         }
         .perms-mini-btn:hover { border-color: var(--c-accent-3); color: var(--c-accent); }
+        .perms-tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--c-line); }
+        .perms-tab {
+            background: transparent; border: 0; padding: 10px 16px;
+            font: 500 0.9rem/1 inherit; color: var(--c-ink-4); cursor: pointer;
+            border-bottom: 2px solid transparent; transition: all var(--t-fast);
+        }
+        .perms-tab:hover { color: var(--c-ink-2); }
+        .perms-tab.is-active { color: var(--c-accent-2); border-bottom-color: var(--c-accent-2); font-weight: 600; }
+        .perms-user-pick { margin-bottom: 16px; max-width: 420px; }
+        .perms-user-pick label { display: block; font-size: 0.78rem; font-weight: 500; color: var(--c-ink-3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+        .perms-user-pick select {
+            width: 100%; padding: 12px 14px; border: 1.5px solid var(--c-line);
+            border-radius: var(--r-md); font-family: inherit; font-size: 0.92rem;
+            color: var(--c-ink); background: var(--c-white);
+        }
+        .perms-user-pick select:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 4px rgba(3, 105, 161, 0.12); }
+        .perms-user-empty { color: var(--c-ink-5); font-size: 0.9rem; padding: 8px 2px; }
 
         /* ---------- MESSAGES ---------- */
         .chat-wrap {
@@ -5568,7 +5590,7 @@
                 <div class="topbar">
                     <div class="topbar__title">
                         <h1>Permissions</h1>
-                        <p>Tick to allow, untick to block. Controls which pages each role — including the Director — can use. You (System Admin) are never restricted.</p>
+                        <p>Tick to show, untick to hide. Control pages by role, or override visibility for one individual user. You (System Admin) are never restricted.</p>
                     </div>
                     <div class="topbar__actions">
                         <button class="btn btn--primary" id="permsSaveBtn">
@@ -5577,7 +5599,25 @@
                         </button>
                     </div>
                 </div>
-                <div id="permissionsHost" class="perms-host"></div>
+
+                <div class="perms-tabs">
+                    <button type="button" class="perms-tab is-active" data-perm-tab="role">By role</button>
+                    <button type="button" class="perms-tab" data-perm-tab="user">By user (page visibility)</button>
+                </div>
+
+                <!-- By role -->
+                <div id="permsByRole">
+                    <div id="permissionsHost" class="perms-host"></div>
+                </div>
+
+                <!-- By user -->
+                <div id="permsByUser" style="display:none;">
+                    <div class="perms-user-pick">
+                        <label for="permsUserSelect">Choose a user</label>
+                        <select id="permsUserSelect"></select>
+                    </div>
+                    <div id="permsUserHost" class="perms-host"></div>
+                </div>
             </section>
 
             <section class="view" id="view-logs">
