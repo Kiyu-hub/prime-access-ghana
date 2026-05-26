@@ -6306,19 +6306,21 @@
             return;
         }
         let warehouseId = session.warehouse_id;
-        // Super-roles validate against the order's own warehouse_id
-        // (look it up by invoice code first if no warehouse assigned).
+        // Super-roles (Director / System Admin) are not tied to a warehouse.
+        // Validate against the order's own warehouse when we can find it, but
+        // proceed even if neither side has one — they have full access and the
+        // RPC does not enforce a warehouse match when the value is null.
         if (!warehouseId && isSuperRole()) {
             try {
                 const lookup = await window.CH.customerOrders.getByInvoiceCode(code);
                 if (lookup && lookup.warehouse_id) warehouseId = lookup.warehouse_id;
             } catch (_) {}
         }
-        if (!warehouseId) { toast('You are not assigned to a warehouse — cannot validate.', 'error'); return; }
+        if (!warehouseId && !isSuperRole()) { toast('You are not assigned to a warehouse — cannot validate.', 'error'); return; }
         try {
             verifyBtn.disabled = true;
             verifyBtn.textContent = 'Checking…';
-            const res = await window.CH.customerOrders.validateInvoice(code, warehouseId, session.id, validatorCode);
+            const res = await window.CH.customerOrders.validateInvoice(code, warehouseId || null, session.id, validatorCode);
             try {
                 await window.CH.logs.record({
                     action: res.result === 'pass' ? 'customer_order_validated_pass' : 'customer_order_validated_fail',
