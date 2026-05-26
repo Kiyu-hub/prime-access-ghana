@@ -322,16 +322,20 @@
             return;
         }
         // Feature-flag guard: System Admin can disable Product Transfers
-        // and Move Stock for the whole platform. Block the view if off.
-        if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
-            toast('This feature is currently disabled.', 'info');
-            switchView('products');
-            return;
-        }
-        if (view === 'move-stock' && featureFlagsCache && featureFlagsCache.move_stock_enabled === false) {
-            toast('This feature is currently disabled.', 'info');
-            switchView('products');
-            return;
+        // and Move Stock for the whole platform. Block the view if off —
+        // EXCEPT for the System Admin themselves, who is never limited by a
+        // feature flag and always has full access to every page.
+        if (currentRole() !== 'system_manager') {
+            if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
+                toast('This feature is currently disabled.', 'info');
+                switchView('products');
+                return;
+            }
+            if (view === 'move-stock' && featureFlagsCache && featureFlagsCache.move_stock_enabled === false) {
+                toast('This feature is currently disabled.', 'info');
+                switchView('products');
+                return;
+            }
         }
         if (view !== currentView) previousView = currentView || 'products';
         currentView = view;
@@ -2736,8 +2740,9 @@
      */
     async function shouldShowTransferRequestButton(p) {
         if (!p || !window.CH || !window.CH.productTransfers) return false;
-        // System Admin can switch off the whole transfers feature.
-        if (featureFlagsCache && featureFlagsCache.transfers_enabled === false) return false;
+        // System Admin can switch off the whole transfers feature — but is
+        // never limited by it themselves (full access always).
+        if (featureFlagsCache && featureFlagsCache.transfers_enabled === false && currentRole() !== 'system_manager') return false;
         if (currentRole() === 'warehouse_manager') return false;
         const itemNo = (p.item_no || '').trim();
         if (!itemNo) return false;

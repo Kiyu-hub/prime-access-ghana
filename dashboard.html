@@ -279,10 +279,13 @@
         .nav__label.sys-manager-only { display: none !important; }
         body[data-role="system_manager"] .nav__label.sys-manager-only { display: block !important; }
 
-        /* Announcements (.staff-only) — visible to everyone EXCEPT super-roles. */
+        /* Announcements (.staff-only) — visible to everyone EXCEPT the Director. */
         body.is-admin .nav .staff-only,
         body[data-role="admin"] .nav .staff-only,
         body[data-role="system_manager"] .nav .staff-only { display: none !important; }
+        /* …but the System Admin (overall manager) sees everything, Announcements
+           included. Higher specificity wins over the is-admin/role hides above. */
+        body[data-role="system_manager"] .nav a.staff-only { display: flex !important; }
 
         /* Branch Manager: gets Activity Logs + (read-only) Warehouses.
            Drafts is now restricted to System Admin only. */
@@ -866,12 +869,15 @@
 
         /* Feature gates: when System Admin turns these off via the sidebar,
            the body gets a data-flag attribute and these CSS rules hide the
-           feature entirely (nav links, badges, in-detail buttons). */
-        body[data-flag-transfers="off"] .nav a[data-view="product-transfers"],
-        body[data-flag-transfers="off"] .nav a[data-view="verify-invoice"],
-        body[data-flag-transfers="off"] #pdetailRequestBtn,
-        body[data-flag-transfers="off"] #navTransfersBadge { display: none !important; }
-        body[data-flag-move-stock="off"] .nav a[data-view="move-stock"] { display: none !important; }
+           feature entirely (nav links, badges, in-detail buttons).
+           The System Admin (overall manager) is NEVER limited by a feature
+           flag — :not([data-role="system_manager"]) keeps every gated item
+           visible to them so they always have full access. */
+        body[data-flag-transfers="off"]:not([data-role="system_manager"]) .nav a[data-view="product-transfers"],
+        body[data-flag-transfers="off"]:not([data-role="system_manager"]) .nav a[data-view="verify-invoice"],
+        body[data-flag-transfers="off"]:not([data-role="system_manager"]) #pdetailRequestBtn,
+        body[data-flag-transfers="off"]:not([data-role="system_manager"]) #navTransfersBadge { display: none !important; }
+        body[data-flag-move-stock="off"]:not([data-role="system_manager"]) .nav a[data-view="move-stock"] { display: none !important; }
 
         /* Dev-mode banner: top of the page, only when toggle is on Dev */
         body[data-mode="dev"] .main::before {
