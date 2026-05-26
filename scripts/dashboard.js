@@ -337,6 +337,14 @@
                 return;
             }
         }
+        // Permission guard: the System Admin can block specific pages per role
+        // (System Admin itself is never restricted).
+        if (currentRole() !== 'system_manager' && deniedViewsForRole(currentRole()).includes(view)) {
+            toast('You do not have access to that page.', 'error');
+            const allowed = (VIEWS_BY_ROLE[currentRole()] || ['products']).find((v) => !deniedViewsForRole(currentRole()).includes(v)) || 'products';
+            if (allowed && allowed !== view) switchView(allowed);
+            return;
+        }
         if (view !== currentView) previousView = currentView || 'products';
         currentView = view;
         $$('.view').forEach((v) => v.classList.remove('is-active'));
@@ -366,6 +374,7 @@
         if (view === 'new-sale') initNewSale();
         if (view === 'purchases') loadPurchases();
         if (view === 'verify-invoice') initVerifyInvoice();
+        if (view === 'permissions') renderPermissions();
     }
 
     /* ---------- logout ---------- */
@@ -5303,11 +5312,12 @@
     // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates'];
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions'];
     // Director gets everything except System Admin-only ops AND id-cards
     // by default; id-cards is dynamically allowed for Director at runtime
     // when the System Admin's feature flag is on (see switchView).
-    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates');
+    // 'permissions' is System Admin-only (it controls the other roles).
+    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions');
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
@@ -7004,6 +7014,139 @@
                 applyFeatureFlagsUi();
             }
         } catch (_) {}
+    })();
+
+    /* ============================================================
+       ROLE PERMISSIONS (Phase 6 — System Admin page-access control)
+       ============================================================ */
+    // Manageable pages, in display order. label shown in the panel.
+    const PERMISSION_VIEWS = [
+        ['products', 'Products'], ['showroom', 'Showroom'], ['warehouse-stock', 'Warehouse Stock'],
+        ['reports', 'Reports'], ['messages', 'Messages'], ['announcements', 'Announcements'],
+        ['product-transfers', 'Product Transfers'], ['new-sale', 'New Sale'], ['purchases', 'Sales / Purchases'],
+        ['verify-invoice', 'Verify Invoice'], ['move-stock', 'Move Stock'], ['warehouses', 'Warehouses'],
+        ['payment-accounts', 'Payment Accounts'], ['taxonomy', 'Categories & Materials'], ['branches', 'Branches'],
+        ['staff', 'Staff'], ['logs', 'Activity logs'], ['drafts', 'Drafts'], ['extract', 'Extract from image'],
+        ['media', 'Media Library'], ['id-cards', 'Staff ID Cards'], ['invoice-templates', 'Invoice Templates'],
+    ];
+    // Roles the System Admin can limit (System Admin itself is never restricted).
+    const PERMISSION_ROLES = [
+        ['admin', 'Director'], ['branch_manager', 'Branch Manager'],
+        ['warehouse_manager', 'Warehouse Manager'], ['staff', 'Staff'],
+    ];
+    let permissionsCache = {}; // { role: [deniedView, ...] }
+
+    // Denied views for a role. System Admin is never restricted.
+    function deniedViewsForRole(role) {
+        if (role === 'system_manager') return [];
+        const list = permissionsCache[role];
+        return Array.isArray(list) ? list : [];
+    }
+
+    // Hide denied nav links for the CURRENT user and bounce them off a denied
+    // page if they're on one. Non-denied links revert to CSS-governed display.
+    function applyRolePermissionsToSelf() {
+        const role = currentRole();
+        const denied = new Set(deniedViewsForRole(role));
+        PERMISSION_VIEWS.forEach(([view]) => {
+            document.querySelectorAll('.nav a[data-view="' + view + '"]').forEach((a) => {
+                a.style.display = denied.has(view) ? 'none' : '';
+            });
+        });
+        if (denied.has(currentView)) {
+            const fallback = (VIEWS_BY_ROLE[role] || ['products']).find((v) => !denied.has(v)) || 'products';
+            if (fallback !== currentView) switchView(fallback);
+        }
+    }
+
+    async function loadPermissionsOnBoot() {
+        try {
+            if (window.CH && window.CH.permissions) permissionsCache = await window.CH.permissions.getAll();
+        } catch (_) { permissionsCache = {}; }
+        applyRolePermissionsToSelf();
+    }
+    loadPermissionsOnBoot();
+
+    // Render the System Admin permissions matrix (one card per role).
+    function renderPermissions() {
+        const host = document.getElementById('permissionsHost');
+        if (!host) return;
+        if (currentRole() !== 'system_manager') {
+            host.innerHTML = '<p style="color:var(--c-ink-5);">Only the System Admin can manage permissions.</p>';
+            return;
+        }
+        host.innerHTML = PERMISSION_ROLES.map(([role, label]) => {
+            const base = VIEWS_BY_ROLE[role] || [];
+            const views = PERMISSION_VIEWS.filter(([v]) => base.includes(v));
+            const denied = new Set(deniedViewsForRole(role));
+            const allowed = views.filter(([v]) => !denied.has(v)).length;
+            const rows = views.map(([v, vlabel]) => `
+                <label class="perms-toggle">
+                    <input type="checkbox" data-perm-role="${role}" data-perm-view="${v}" ${denied.has(v) ? '' : 'checked'} />
+                    <span>${escapeHtml(vlabel)}</span>
+                </label>`).join('') || '<p style="color:var(--c-ink-5);font-size:0.86rem;">No manageable pages for this role.</p>';
+            return `<div class="perms-role-card" data-role-card="${role}">
+                <div class="perms-role-card__head">
+                    <span class="perms-role-card__title">${escapeHtml(label)}</span>
+                    <span class="perms-role-card__count" data-count-for="${role}">${allowed}/${views.length} pages</span>
+                </div>
+                <div class="perms-list">${rows}</div>
+                <div class="perms-role-card__actions">
+                    <button type="button" class="perms-mini-btn" data-perm-all="${role}">Allow all</button>
+                    <button type="button" class="perms-mini-btn" data-perm-none="${role}">Block all</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async function savePermissions() {
+        if (currentRole() !== 'system_manager') return;
+        const host = document.getElementById('permissionsHost');
+        if (!host) return;
+        const deniedByRole = {};
+        PERMISSION_ROLES.forEach(([role]) => { deniedByRole[role] = []; });
+        host.querySelectorAll('input[data-perm-role]').forEach((cb) => {
+            if (!cb.checked) deniedByRole[cb.dataset.permRole].push(cb.dataset.permView);
+        });
+        const btn = document.getElementById('permsSaveBtn');
+        try {
+            if (btn) btn.disabled = true;
+            for (const [role, denied] of Object.entries(deniedByRole)) {
+                await window.CH.permissions.setDenied(role, denied);
+            }
+            permissionsCache = deniedByRole;
+            applyRolePermissionsToSelf();
+            toast('Permissions saved. Affected users see the change on their next page load.', 'success');
+        } catch (e) {
+            toast('Could not save permissions: ' + (e.message || 'unknown'), 'error');
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
+    (function wirePermissions() {
+        const host = document.getElementById('permissionsHost');
+        const saveBtn = document.getElementById('permsSaveBtn');
+        if (saveBtn) saveBtn.addEventListener('click', savePermissions);
+        if (!host) return;
+        function countFor(role) {
+            const cbs = host.querySelectorAll('input[data-perm-role="' + role + '"]');
+            const allowed = Array.from(cbs).filter((c) => c.checked).length;
+            const el = host.querySelector('[data-count-for="' + role + '"]');
+            if (el) el.textContent = allowed + '/' + cbs.length + ' pages';
+        }
+        host.addEventListener('change', (e) => {
+            const cb = e.target.closest('input[data-perm-role]');
+            if (cb) countFor(cb.dataset.permRole);
+        });
+        host.addEventListener('click', (e) => {
+            const allBtn = e.target.closest('[data-perm-all]');
+            const noneBtn = e.target.closest('[data-perm-none]');
+            const role = allBtn ? allBtn.dataset.permAll : (noneBtn ? noneBtn.dataset.permNone : null);
+            if (!role) return;
+            host.querySelectorAll('input[data-perm-role="' + role + '"]').forEach((cb) => { cb.checked = !!allBtn; });
+            countFor(role);
+        });
     })();
 
     function wireFeatureFlagToggles() {

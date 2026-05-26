@@ -28,7 +28,8 @@ A modern, multi-branch inventory & sales platform built for Clasikal Homes (Ghan
 | **Cash receipt confirmation** | New Sale form requires the cashier to tick a "cash physically received" affirmation before the invoice is issued |
 | **Media Library** | System Manager bulk-uploads images to Cloudinary, search/copy/delete from a gallery |
 | **Staff ID Cards** | Branded ID cards with photo + QR; pick a template (Classic / Modern / Minimal), accent colour, fields; print all staff in one go |
-| **Dev / Live mode** | System Manager toggles a sandbox mode at the sidebar — products, transfers, orders, logs, media are isolated until reset |
+| **Dev / Live mode** | System Manager toggles a sandbox mode at the sidebar — products, transfers, orders, logs, media are isolated until reset. **Strictly private to the System Admin**: every other user (including the Director) is always in Live mode and is never affected by the toggle. |
+| **Permissions** | System Admin-only page that controls which pages each role — Director, Branch Manager, Warehouse Manager, Staff — may use, via tick/untick. Blocked pages disappear from that role's nav and can't be opened. The System Admin is never restricted. |
 | **PWA / offline shell** | Installable, with a service worker that caches the shell for offline use |
 
 ---
@@ -107,7 +108,8 @@ There is no Node project, no `package.json`, no compile step. Anything you can s
     ├── add-phase3-delivery-info.sql     # Transfer delivery address/phone columns
     ├── add-phase4-foundations.sql       # Dev/Live mode, Move Stock RPC, staff photo/start date, Media library, ID card settings
     ├── add-phase4-fix*.sql              # `env` column + staff_view/RPC refreshes for Dev/Live mode
-    ├── add-phase5-system-admin.sql      # Promote the super account to System Admin (system_manager), clear its branch
+    ├── add-phase5-system-admin.sql      # Promote the super account to System Admin (system_manager), clear its branch + give it a CH-SA staff code
+    ├── add-phase6-permissions.sql       # role_permissions table — System Admin controls page access per role
     └── clear-products.sql               # Dev helper: wipe products + drafts
 ```
 
@@ -197,6 +199,7 @@ A version bump is just editing `scripts/version.js`. The service worker uses tha
 | **Phase 3** | Customer orders + branded invoices, warehouse verification, System Manager role, transfer delivery info (internal vs external) |
 | **Phase 4** | Move Stock (direct, super-roles), cash receipt affirmation, Media Library, branded Staff ID Cards (QR + templates), Dev/Live mode for System Manager, optional staff photo + start date, stricter transfer-button gating, hidden payment fields when "Not paid", sales + stock-moved cards in Reports |
 | **Phase 5** | System Admin hardening — overall manager above the Director, no branch assignment, hidden from every staff listing / dropdown / report. Reports overhaul — date-range filter (presets + custom), sales summary, sales by branch, payments received by account & method, and a full date+time transaction ledger, all role-tailored and exported to the branded Business Report PDF |
+| **Phase 6** | System Admin permissions panel — tick/untick page access per role (incl. Director); System Admin gains full unrestricted access (never limited by feature flags) and can verify invoices without a warehouse; dev mode made strictly private to the System Admin (no effect on any other user) |
 
 ---
 

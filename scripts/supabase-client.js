@@ -174,9 +174,17 @@
 
     // Mode helper — reads localStorage. Defined early so every data
     // module below can call it. The toggle UI lives in dashboard.js.
+    // Dev mode is EXCLUSIVELY the System Admin's private sandbox: only a
+    // signed-in system_manager can ever be in dev mode. Every other user
+    // (including the Director) is always 'live' regardless of what's in
+    // localStorage, so the System Admin toggling dev mode can never affect
+    // their reads, writes or operations in any way.
     function currentMode() {
-        try { return localStorage.getItem('ch_mode') === 'dev' ? 'dev' : 'live'; }
-        catch (_) { return 'live'; }
+        try {
+            const s = readSession();
+            if (!s || s.role !== 'system_manager') return 'live';
+            return localStorage.getItem('ch_mode') === 'dev' ? 'dev' : 'live';
+        } catch (_) { return 'live'; }
     }
     // In live mode reads see only env='live' rows. In dev mode reads see
     // EVERYTHING — the System Admin can test against real data, but their
@@ -909,6 +917,31 @@
         },
     };
 
+    /* ---- role permissions (Phase 6 — System Admin controls) -- */
+    const permissions = {
+        // Returns a map { role: [deniedView, ...] }. Missing table or rows
+        // degrade gracefully to "no restrictions".
+        async getAll() {
+            try {
+                const { data, error } = await client.from('role_permissions').select('role, denied_views');
+                if (error) throw error;
+                const map = {};
+                (data || []).forEach((r) => {
+                    let v = r.denied_views;
+                    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (_) { v = []; } }
+                    map[r.role] = Array.isArray(v) ? v : [];
+                });
+                return map;
+            } catch (_) { return {}; }
+        },
+        // Replace the denied-views list for one role.
+        async setDenied(role, deniedViews) {
+            const { error } = await client.from('role_permissions')
+                .upsert({ role, denied_views: deniedViews, updated_at: new Date().toISOString() }, { onConflict: 'role' });
+            if (error) throw error;
+        },
+    };
+
     /* ---- dev/live mode helpers (Phase 4) -------------------- */
     const devMode = {
         // The mode toggle lives in localStorage so it survives reloads,
@@ -916,8 +949,12 @@
         // and the client uses it to filter reads + tag writes.
         KEY: 'ch_mode',
         current() {
-            try { return localStorage.getItem(devMode.KEY) === 'dev' ? 'dev' : 'live'; }
-            catch (_) { return 'live'; }
+            // Mirror currentMode(): dev mode only ever applies to the System Admin.
+            try {
+                const s = readSession();
+                if (!s || s.role !== 'system_manager') return 'live';
+                return localStorage.getItem(devMode.KEY) === 'dev' ? 'dev' : 'live';
+            } catch (_) { return 'live'; }
         },
         set(mode) {
             try { localStorage.setItem(devMode.KEY, mode === 'dev' ? 'dev' : 'live'); }
@@ -959,6 +996,7 @@
         media,
         idCardSettings,
         featureFlags,
+        permissions,
         devMode,
     });
 })();
