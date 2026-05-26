@@ -6595,7 +6595,7 @@
         const brEl  = $('#idCardShowBranch');     if (brEl)  brEl.checked = idCardSettings.show_branch_location !== false;
         const qrEl  = $('#idCardShowQr');         if (qrEl)  qrEl.checked = !!idCardSettings.show_qr;
         const enEl  = $('#idCardEnablePrint');    if (enEl)  enEl.checked = !!idCardSettings.enabled_for_print;
-        const printBtn = $('#idCardPrintAllBtn'); if (printBtn) printBtn.disabled = !idCardSettings.enabled_for_print;
+        if (printBtn) printBtn.disabled = !idCardSettings.enabled_for_print;
         renderIdCardPreview();
     }
 
