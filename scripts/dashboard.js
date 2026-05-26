@@ -1864,6 +1864,23 @@
         els.staffBranch.innerHTML = opts;
     }
 
+    // Build the role <select> options for the current viewer. Director and
+    // System Admin can only be assigned by a System Admin (the overall
+    // manager); everyone else gets the three operational roles.
+    function populateStaffRoleOptions() {
+        if (!els.staffRole) return;
+        const roles = [
+            ['staff', 'Staff'],
+            ['branch_manager', 'Branch Manager'],
+            ['warehouse_manager', 'Warehouse Manager'],
+        ];
+        if (currentRole() === 'system_manager') {
+            roles.push(['admin', 'Director']);
+            roles.push(['system_manager', 'System Admin']);
+        }
+        els.staffRole.innerHTML = roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    }
+
     /* ============================================================
        STAFF (admin)
        ============================================================ */
@@ -1885,11 +1902,12 @@
 
     function renderStaff() {
         // Visibility rule:
-        //   System Admin accounts are infrastructure-level. They are the overall
-        //   manager (above the Director) and are NEVER listed in the Staff table —
-        //   for any viewer, including other System Admins. Their name, email,
-        //   code and every other detail stay out of the staff directory entirely.
-        const visibleStaff = (staffList || []).filter((s) => !isSystemAdminStaff(s));
+        //   System Admin accounts are the overall manager (above the Director).
+        //   They are hidden from the Director and everyone else — but a System
+        //   Admin DOES see System Admin rows in their own dashboard, so they can
+        //   view and edit their own account (and any other System Admin).
+        const viewerIsSysAdmin = currentRole() === 'system_manager';
+        const visibleStaff = (staffList || []).filter((s) => isSystemAdminStaff(s) ? viewerIsSysAdmin : true);
         if (visibleStaff.length === 0) {
             els.staffBody.innerHTML = '';
             els.staffEmpty.style.display = 'block';
@@ -1973,6 +1991,7 @@
         els.staffPasswordReq.style.display = 'inline';
         els.staffPassword.required = true;
         populateBranchSelect();
+        populateStaffRoleOptions();
         populateStaffWarehouseSelect();
         els.staffRole.value = 'staff';
         toggleStaffWarehouseField();
@@ -2003,10 +2022,13 @@
         els.staffPasswordReq.style.display = 'none';
         els.staffPassword.required = false;
         populateBranchSelect();
+        populateStaffRoleOptions();
         populateStaffWarehouseSelect();
         els.staffBranch.value = s.branch_id || '';
-        // Normalize legacy free-text role to enum on display
-        const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
+        // Normalize legacy free-text role to enum on display. Includes the two
+        // super roles so a System Admin editing their own account keeps the
+        // correct role instead of silently dropping to Director.
+        const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin', 'system_manager'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
         els.staffRole.value = enumRole;
         toggleStaffWarehouseField();
         toggleStaffManagesAllField();
@@ -2085,15 +2107,18 @@
         const warehouseId = (role === 'warehouse_manager' && warehouseSel) ? (warehouseSel.value || null) : null;
         const allBranchesEl = document.getElementById('staffManagesAllBranches');
         const allWarehousesEl = document.getElementById('staffManagesAllWarehouses');
+        // Super roles (Director / System Admin) always manage everything —
+        // never let an edit silently strip those flags.
+        const superRole = isSuperRole(role);
         const payload = {
             name: els.staffName.value.trim(),
             email: els.staffEmail.value.trim().toLowerCase(),
             password: els.staffPassword.value,
             role,
             branch_id: els.staffBranch.value || null,
-            is_admin: isSuperRole(role),
-            manages_all_branches:   !!(allBranchesEl   && allBranchesEl.checked),
-            manages_all_warehouses: !!(allWarehousesEl && allWarehousesEl.checked),
+            is_admin: superRole,
+            manages_all_branches:   superRole || !!(allBranchesEl   && allBranchesEl.checked),
+            manages_all_warehouses: superRole || !!(allWarehousesEl && allWarehousesEl.checked),
         };
         if (!payload.name || !payload.email) { toast('Name and email are required.', 'error'); return; }
         if (role === 'warehouse_manager' && !warehouseId) { toast('Warehouse Manager must be assigned to a warehouse.', 'error'); return; }
@@ -2132,6 +2157,26 @@
                     const startedAt = ($('#staffStartedAt') && $('#staffStartedAt').value) || null;
                     await window.CH.staff.patch(staffId, { image_url: photoUrl, started_at: startedAt });
                 } catch (e) { console.warn('staff.patch failed:', e); }
+                // Every staff member gets an auto-generated staff ID. System
+                // Admin (no branch) gets a dedicated CH-SA-NNN code; everyone
+                // else gets CH-<branch initial>-NNN from the DB generator.
+                try {
+                    const existingCode = (prev && prev.staff_code) || null;
+                    if (!existingCode) {
+                        let newCode = null;
+                        if (role === 'system_manager') {
+                            let max = 0;
+                            (staffList || []).forEach((s) => {
+                                const m = /^CH-SA-(\d+)$/.exec(s.staff_code || '');
+                                if (m) max = Math.max(max, parseInt(m[1], 10));
+                            });
+                            newCode = 'CH-SA-' + String(max + 1).padStart(3, '0');
+                        } else if (window.CH.roles && window.CH.roles.generateStaffCode) {
+                            newCode = await window.CH.roles.generateStaffCode(payload.branch_id);
+                        }
+                        if (newCode) await window.CH.staff.patch(staffId, { staff_code: newCode });
+                    }
+                } catch (e) { console.warn('staff code generation failed:', e); }
             }
             els.staffModal.classList.remove('is-open');
             await loadStaff();

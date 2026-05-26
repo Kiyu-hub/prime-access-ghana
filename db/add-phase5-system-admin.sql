@@ -42,3 +42,24 @@ update public.staff
    set branch_id = null
  where role = 'system_manager'
    and branch_id is not null;
+
+-- 4) Auto-generate a staff ID for every System Admin that lacks one.
+--    They have no branch, so the standard branch-initial generator doesn't
+--    cover them — give them a dedicated, sequential CH-SA-NNN code instead.
+do $$
+declare s record; next_seq int; new_code text;
+begin
+  for s in
+    select id from public.staff
+     where role = 'system_manager'
+       and (staff_code is null or staff_code = '')
+     order by created_at
+  loop
+    select coalesce(max((regexp_match(staff_code, '^CH-SA-(\d+)$'))[1]::int), 0) + 1
+      into next_seq
+      from public.staff
+     where staff_code ~ '^CH-SA-\d+$';
+    new_code := 'CH-SA-' || lpad(next_seq::text, 3, '0');
+    update public.staff set staff_code = new_code where id = s.id;
+  end loop;
+end $$;
