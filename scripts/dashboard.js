@@ -5901,6 +5901,7 @@
             .concat(branchProducts.map((p) => `<option value="${p.id}" data-price="${p.price}" data-stock="${p.stock}" data-wh="${p.warehouse_id || ''}" data-item-no="${escapeAttr(p.item_no || '')}" data-desc="${escapeAttr(p.description || '')}" data-image="${escapeAttr(p.image_url || '')}">${escapeHtml((p.item_no ? p.item_no + ' · ' : '') + (p.description || ''))} (${p.stock} in stock)</option>`))
             .join('');
         // Auto-fill price + product image when product changes
+        const qtyInp = lineEl.querySelector('[data-sale-qty]');
         sel.addEventListener('change', () => {
             const opt = sel.selectedOptions[0];
             const priceInp = lineEl.querySelector('[data-sale-price]');
@@ -5916,9 +5917,33 @@
                     thumb.innerHTML = `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>`;
                 }
             }
+            const stock = Math.max(0, parseInt((opt && opt.dataset.stock) || '0', 10) || 0);
+            qtyInp.max = stock > 0 ? String(stock) : '';
+            qtyInp.title = stock > 0 ? ('Available: ' + stock) : 'Out of stock';
+            if (stock <= 0) {
+                qtyInp.value = '0';
+                qtyInp.disabled = true;
+                toast('That product is out of stock at this branch.', 'error');
+            } else {
+                qtyInp.disabled = false;
+                const cur = parseInt(qtyInp.value, 10) || 0;
+                if (cur > stock) qtyInp.value = String(stock);
+                if (cur < 1) qtyInp.value = '1';
+            }
             saleRecomputeTotal();
         });
-        lineEl.querySelector('[data-sale-qty]').addEventListener('input', saleRecomputeTotal);
+        qtyInp.addEventListener('input', () => {
+            const opt = sel.selectedOptions[0];
+            const stock = Math.max(0, parseInt((opt && opt.dataset.stock) || '0', 10) || 0);
+            if (stock > 0) {
+                const v = parseInt(qtyInp.value, 10) || 0;
+                if (v > stock) {
+                    qtyInp.value = String(stock);
+                    toast('Only ' + stock + ' in stock — quantity capped.', 'error');
+                }
+            }
+            saleRecomputeTotal();
+        });
         // Delete button (only if more than one line)
         lineEl.querySelector('.sale-line__del').addEventListener('click', () => {
             if (linesHost.children.length === 1) {
@@ -5981,6 +6006,7 @@
         // Build items
         const items = [];
         let hasInvalid = false;
+        let overStockLabel = '';
         $$('#saleLines .sale-line').forEach((line) => {
             const sel = line.querySelector('[data-sale-product]');
             const opt = sel.selectedOptions[0];
@@ -5991,9 +6017,12 @@
             const source_warehouse_id = opt && opt.dataset.wh ? opt.dataset.wh : null;
             const item_no = opt ? opt.dataset.itemNo : '';
             const description = opt ? opt.dataset.desc : '';
+            const stock = Math.max(0, parseInt((opt && opt.dataset.stock) || '0', 10) || 0);
             if (!product_id || qty <= 0) hasInvalid = true;
+            if (opt && qty > stock) overStockLabel = (item_no || description || 'an item') + ' (only ' + stock + ' in stock)';
             items.push({ product_id, item_no, description, qty, unit_price, source, source_warehouse_id });
         });
+        if (overStockLabel) { toast('Quantity exceeds stock for ' + overStockLabel + '.', 'error'); return; }
         // Validation
         if (!clientName) { toast('Customer name is required.', 'error'); return; }
         if (items.length === 0 || hasInvalid) { toast('Add at least one item with quantity ≥ 1.', 'error'); return; }
