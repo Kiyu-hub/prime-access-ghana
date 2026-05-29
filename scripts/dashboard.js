@@ -6385,7 +6385,7 @@
                     </button>
                 </div>
             `;
-            host.querySelector('[data-fulfill]').addEventListener('click', () => fulfillOrder(full.id, code));
+            host.querySelector('[data-fulfill]').addEventListener('click', () => fulfillOrder(full, code));
         } else {
             const titleMap = {
                 fail_not_found: 'INVALID · Code not found',
@@ -6412,7 +6412,8 @@
         }
     }
 
-    async function fulfillOrder(orderId, code) {
+    async function fulfillOrder(full, code) {
+        const orderId = typeof full === 'string' ? full : full.id;
         if (!confirm('Confirm dispatch? Stock will be deducted and this invoice cannot be reused.')) return;
         const validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
         try {
@@ -6425,13 +6426,53 @@
                 });
             } catch (_) {}
             toast('Dispatched. Stock decremented.', 'success');
-            // Refresh the verify view
-            renderVerifyResult({ result: 'fail_already_used', detail: 'You just fulfilled this order. Stock has been moved.', validated_by_code: validatorCode, validated_at: new Date().toISOString() }, code);
-            // Refresh products if visible
+            const orderForView = (full && typeof full === 'object') ? full : await window.CH.customerOrders.get(orderId);
+            renderFulfilledSuccess(orderForView, code, validatorCode);
             if (currentView === 'products') await loadProducts();
         } catch (err) {
             toast('Could not dispatch: ' + (err.message || 'unknown'), 'error');
         }
+    }
+
+    function renderFulfilledSuccess(full, code, validatorCode) {
+        const host = $('#verifyResult');
+        if (!host) return;
+        const itemsHtml = (full.items || []).map((it) => `
+            <div class="verify-result__row"><span>${escapeHtml(it.item_no_snap || '—')} · ${escapeHtml(it.description_snap || '')}</span><b>×${it.qty}</b></div>
+        `).join('');
+        const dispatchedAt = new Date().toLocaleString();
+        host.innerHTML = `
+            <div class="verify-result verify-result--pass">
+                <div class="verify-result__head">
+                    <div class="verify-result__icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                    <div>
+                        <h3 class="verify-result__title">SUCCESS · Order dispatched</h3>
+                        <p class="verify-result__subtitle">Stock has been deducted and the invoice is now closed.</p>
+                    </div>
+                </div>
+                <div class="verify-result__rows">
+                    <div class="verify-result__row"><span>Invoice code</span><b>${escapeHtml(full.invoice_code || code)}</b></div>
+                    <div class="verify-result__row"><span>Order code</span><b>${escapeHtml(full.code || '—')}</b></div>
+                    <div class="verify-result__row"><span>Customer</span><b>${escapeHtml(full.client_name || '—')}</b></div>
+                    <div class="verify-result__row"><span>Total</span><b>${fmtMoney(full.total)}</b></div>
+                    <div class="verify-result__row"><span>Payment</span><b>${escapeHtml((full.payment_method || '').toUpperCase())}${full.payment_confirmed ? ' · ✓ confirmed' : ''}</b></div>
+                    <div class="verify-result__row"><span>Dispatched by</span><b>${escapeHtml(validatorCode || '—')}</b></div>
+                    <div class="verify-result__row"><span>Dispatched at</span><b>${escapeHtml(dispatchedAt)}</b></div>
+                </div>
+                <h3 style="font-size:0.86rem;margin-top:14px;margin-bottom:8px;color:var(--c-ink-3);">Items dispatched</h3>
+                <div class="verify-result__rows">${itemsHtml}</div>
+                <button type="button" class="btn btn--primary" id="verifyAnotherBtn" style="width:100%;margin-top:14px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><polyline points="3 3 3 9 9 9"/></svg>
+                    <span>Verify another invoice</span>
+                </button>
+            </div>
+        `;
+        const againBtn = host.querySelector('#verifyAnotherBtn');
+        if (againBtn) againBtn.addEventListener('click', () => {
+            initVerifyInvoice();
+            const codeInput = $('#verifyInvoiceCode');
+            if (codeInput) codeInput.focus();
+        });
     }
 
     // Click-outside close for invoice modal
