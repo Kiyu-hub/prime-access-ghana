@@ -6191,6 +6191,9 @@
             body.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--c-ink-5);">Sales not enabled yet. Ask the Director to run the latest setup.</td></tr>';
             return;
         }
+        if (!staffList || staffList.length === 0) {
+            try { staffList = await window.CH.staff.list(); } catch (_) {}
+        }
         try {
             const role = currentRole();
             const branchScope = getManagedBranchIds();
@@ -6247,7 +6250,7 @@
                 <td><strong>${fmtMoney(o.total)}</strong></td>
                 <td>${escapeHtml((o.payment_method || '').toUpperCase())}${o.payment_provider ? '<br><small style="color:var(--c-ink-5);">' + escapeHtml(o.payment_provider) + '</small>' : ''}</td>
                 <td><span class="pill ${statusPill}">${statusLabel}</span></td>
-                <td>${relTime(o.created_at)}<br><small style="color:var(--c-ink-5);">by ${escapeHtml(initiator.staff_code || '—')}</small></td>
+                <td>${relTime(o.created_at)}<br><small style="color:var(--c-ink-5);">by ${staffLabelForCode(initiator.staff_code, initiator.name)}</small></td>
                 <td style="text-align:right;">
                     <button class="icon-btn" data-reprint="${o.id}" title="Reprint invoice"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg></button>
                 </td>
@@ -6281,6 +6284,20 @@
         const row = e.target.closest('tr[data-order-id]');
         if (row) openInvoiceModal(row.dataset.orderId);
     });
+
+    // Resolve a staff_code to "CODE · Full Name" anywhere the UI prints an ID.
+    // Falls back to just the code when the name can't be found (e.g. staffList
+    // not yet loaded or the staff row was deleted).
+    function staffLabelForCode(code, fallbackName) {
+        const c = (code || '').toString().trim();
+        if (!c) return '—';
+        let name = fallbackName || '';
+        if (!name && Array.isArray(staffList)) {
+            const m = staffList.find((s) => (s.staff_code || '').toUpperCase() === c.toUpperCase());
+            if (m) name = m.name || '';
+        }
+        return name ? (escapeHtml(c) + ' · ' + escapeHtml(name)) : escapeHtml(c);
+    }
 
     // ---- Verify Invoice view ------------------------------------
     async function initVerifyInvoice() {
@@ -6381,7 +6398,7 @@
                         <div class="verify-result__row"><span>Customer</span><b>${escapeHtml(full.client_name)}</b></div>
                         <div class="verify-result__row"><span>Total</span><b>${fmtMoney(full.total)}</b></div>
                         <div class="verify-result__row"><span>Payment</span><b>${escapeHtml((full.payment_method || '').toUpperCase())}${full.payment_confirmed ? ' · ✓ confirmed' : ' · ⚠ unconfirmed'}</b></div>
-                        <div class="verify-result__row"><span>Initiated by</span><b>${escapeHtml((full.initiator && full.initiator.staff_code) || '—')}</b></div>
+                        <div class="verify-result__row"><span>Initiated by</span><b>${staffLabelForCode(full.initiator && full.initiator.staff_code, full.initiator && full.initiator.name)}</b></div>
                     </div>
                     <h3 style="font-size:0.86rem;margin-top:14px;margin-bottom:8px;color:var(--c-ink-3);">Items to dispatch</h3>
                     <div class="verify-result__rows">${itemsHtml}</div>
@@ -6409,7 +6426,7 @@
                         </div>
                     </div>
                     ${res.validated_by_code ? `<div class="verify-result__rows">
-                        <div class="verify-result__row"><span>Originally used by</span><b>${escapeHtml(res.validated_by_code)}</b></div>
+                        <div class="verify-result__row"><span>Originally used by</span><b>${staffLabelForCode(res.validated_by_code, res.validated_by_name)}</b></div>
                         ${res.validated_at ? `<div class="verify-result__row"><span>Used at</span><b>${new Date(res.validated_at).toLocaleString()}</b></div>` : ''}
                     </div>` : ''}
                     <div style="font-size:0.84rem;color:var(--c-ink-4);margin-top:14px;">Invoice <code>${escapeHtml(code)}</code> cannot be used again.</div>
@@ -6462,7 +6479,7 @@
                     <div class="verify-result__row"><span>Customer</span><b>${escapeHtml(full.client_name || '—')}</b></div>
                     <div class="verify-result__row"><span>Total</span><b>${fmtMoney(full.total)}</b></div>
                     <div class="verify-result__row"><span>Payment</span><b>${escapeHtml((full.payment_method || '').toUpperCase())}${full.payment_confirmed ? ' · ✓ confirmed' : ''}</b></div>
-                    <div class="verify-result__row"><span>Dispatched by</span><b>${escapeHtml(validatorCode || '—')}</b></div>
+                    <div class="verify-result__row"><span>Dispatched by</span><b>${staffLabelForCode(validatorCode, session && session.name)}</b></div>
                     <div class="verify-result__row"><span>Dispatched at</span><b>${escapeHtml(dispatchedAt)}</b></div>
                 </div>
                 <h3 style="font-size:0.86rem;margin-top:14px;margin-bottom:8px;color:var(--c-ink-3);">Items dispatched</h3>
