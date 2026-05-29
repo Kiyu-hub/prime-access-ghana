@@ -6283,12 +6283,15 @@
     });
 
     // ---- Verify Invoice view ------------------------------------
-    function initVerifyInvoice() {
+    async function initVerifyInvoice() {
         $('#verifyInvoiceCode').value = '';
         $('#verifyValidatorCode').value = session.staff_code || '';
         $('#verifyValidatorName').textContent = session.staff_code ? (session.name || '') : 'Type your code to confirm your name';
         $('#verifyValidatorName').className = 'pt-staff-resolve' + (session.staff_code ? ' is-ok' : '');
         $('#verifyResult').innerHTML = '';
+        if (!staffList || staffList.length === 0) {
+            try { staffList = await window.CH.staff.list(); } catch (_) {}
+        }
     }
 
     const verifyValidatorCodeEl = document.getElementById('verifyValidatorCode');
@@ -6299,7 +6302,10 @@
             const out = $('#verifyValidatorName');
             clearTimeout(debounce);
             if (!code) { out.textContent = 'Type your code to confirm your name'; out.classList.remove('is-ok','is-error'); return; }
-            debounce = setTimeout(() => {
+            debounce = setTimeout(async () => {
+                if (!staffList || staffList.length === 0) {
+                    try { staffList = await window.CH.staff.list(); } catch (_) {}
+                }
                 const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
                 if (match) { out.textContent = match.name; out.classList.add('is-ok'); out.classList.remove('is-error'); }
                 else { out.textContent = 'No staff with that code'; out.classList.add('is-error'); out.classList.remove('is-ok'); }
