@@ -756,7 +756,16 @@
             color: var(--c-ink-2);
             font-weight: 600;
             min-width: 46px;
+            flex-shrink: 0;
         }
+        /* Email can be long — let it wrap so the full address shows
+           instead of being clipped with an ellipsis. */
+        .id-card__field--email {
+            white-space: normal;
+            overflow: visible;
+            align-items: flex-start;
+        }
+        .id-card__field--email span { word-break: break-all; }
         .id-card__bottom {
             display: flex;
             justify-content: space-between;
@@ -785,6 +794,18 @@
             color: var(--c-ink-2);
             letter-spacing: 0.04em;
             font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            min-width: 0;
+        }
+        .id-card__staff-id-label {
+            font-family: var(--f-sans, inherit);
+            font-size: 0.5rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--c-ink-4, #94A3B8);
         }
 
         /* Heritage uses a small variant of the bottom row (already
@@ -5225,9 +5246,13 @@
                             <input type="color" id="idCardAccent" value="#0369A1" />
                         </div>
                         <div class="idc-control">
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowRole" checked /> Show position / title</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowStaffId" checked /> Show Staff ID</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowEmail" checked /> Show email</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowStarted" checked /> Show start date</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowIssued" /> Show issue date</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowBranch" checked /> Show branch location</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranchName" /> Show showroom name</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowQr" checked /> Show QR code</label>
                         </div>
                         <div class="idc-control">

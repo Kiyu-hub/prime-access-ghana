@@ -6827,9 +6827,13 @@
     let idCardSettings = {
         template: 'classic',
         accent_color: '#0369A1',
+        show_role: true,
         show_email: true,
         show_started_at: true,
         show_branch_location: true,
+        show_branch_name: false,
+        show_issued: false,
+        show_staff_id: true,
         show_qr: true,
         enabled_for_print: false,
     };
@@ -6837,12 +6841,12 @@
     function buildIdCardHtml(staffRow, settings) {
         const acc = settings.accent_color || '#0369A1';
         const role = ({
-            'staff': 'Staff',
+            'staff': 'Staff Member',
             'branch_manager': 'Branch Manager',
             'warehouse_manager': 'Warehouse Manager',
             'admin': 'Director',
             'system_manager': 'System Admin',
-        })[staffRow.role] || 'Staff';
+        })[staffRow.role] || 'Staff Member';
         const photoInner = staffRow.image_url
             ? `<img src="${escapeAttr(staffRow.image_url)}" alt="" />`
             : `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="3.5"/><path d="M4 20c0-3.5 3.5-6 8-6s8 2.5 8 6"/></svg>`;
@@ -6880,7 +6884,7 @@
             } catch (_) { qrSvg = ''; }
         }
         const fields = [];
-        if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field"><b>Email</b> ${escapeHtml(staffRow.email)}</div>`);
+        if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field id-card__field--email"><b>Email</b> <span>${escapeHtml(staffRow.email)}</span></div>`);
         if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
         if (settings.show_branch_location) {
             // Always render the row when the toggle is on. Prefer an explicit
@@ -6891,6 +6895,14 @@
                 || staffRow.branch_name
                 || '—';
             fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchDisplay)}</div>`);
+        }
+        if (settings.show_branch_name) {
+            const nameDisplay = (branch && branch.name) || staffRow.branch_name || '—';
+            fields.push(`<div class="id-card__field"><b>Showroom</b> ${escapeHtml(nameDisplay)}</div>`);
+        }
+        if (settings.show_issued) {
+            const issued = new Date().toLocaleDateString();
+            fields.push(`<div class="id-card__field"><b>Issued</b> ${escapeHtml(issued)}</div>`);
         }
         // Branding: classic / modern / minimal keep their original wordmark-
         // only label (no resizing or layout change). Heritage and Crest are
@@ -6909,11 +6921,11 @@
                 ${brandHtml}
             </div>
             <div class="id-card__info">
-                <div class="id-card__role">${escapeHtml(role)}</div>
+                ${settings.show_role !== false ? `<div class="id-card__role">${escapeHtml(role)}</div>` : ''}
                 <div class="id-card__name">${escapeHtml(staffRow.name || '—')}</div>
                 ${fields.join('')}
                 <div class="id-card__bottom">
-                    <div class="id-card__staff-id">${escapeHtml(staffRow.staff_code || '—')}</div>
+                    ${settings.show_staff_id !== false ? `<div class="id-card__staff-id"><span class="id-card__staff-id-label">Staff ID</span>${escapeHtml(staffRow.staff_code || '—')}</div>` : '<span></span>'}
                     ${settings.show_qr ? `<div class="id-card__qr">${qrSvg}</div>` : ''}
                 </div>
             </div>
@@ -7007,9 +7019,13 @@
         // Reflect template into the picker (use the now-possibly-adjusted value)
         tplBtns.forEach((b) => b.classList.toggle('is-active', b.dataset.template === idCardSettings.template));
         const accEl = $('#idCardAccent');         if (accEl) accEl.value = idCardSettings.accent_color || '#0369A1';
+        const roEl  = $('#idCardShowRole');       if (roEl)  roEl.checked = idCardSettings.show_role !== false;
+        const siEl  = $('#idCardShowStaffId');    if (siEl)  siEl.checked = idCardSettings.show_staff_id !== false;
         const emEl  = $('#idCardShowEmail');      if (emEl)  emEl.checked = !!idCardSettings.show_email;
         const stEl  = $('#idCardShowStarted');    if (stEl)  stEl.checked = !!idCardSettings.show_started_at;
+        const isEl  = $('#idCardShowIssued');     if (isEl)  isEl.checked = !!idCardSettings.show_issued;
         const brEl  = $('#idCardShowBranch');     if (brEl)  brEl.checked = idCardSettings.show_branch_location !== false;
+        const bnEl  = $('#idCardShowBranchName'); if (bnEl)  bnEl.checked = !!idCardSettings.show_branch_name;
         const qrEl  = $('#idCardShowQr');         if (qrEl)  qrEl.checked = !!idCardSettings.show_qr;
         const enEl  = $('#idCardEnablePrint');    if (enEl)  enEl.checked = !!idCardSettings.enabled_for_print;
         if (printBtn) printBtn.disabled = !idCardSettings.enabled_for_print;
@@ -7031,14 +7047,18 @@
             idCardSettings.accent_color = accEl.value;
             renderIdCardPreview();
         });
-        ['#idCardShowEmail','#idCardShowStarted','#idCardShowBranch','#idCardShowQr'].forEach((sel) => {
+        ['#idCardShowRole','#idCardShowStaffId','#idCardShowEmail','#idCardShowStarted','#idCardShowIssued','#idCardShowBranch','#idCardShowBranchName','#idCardShowQr'].forEach((sel) => {
             const el = document.querySelector(sel);
             if (!el) return;
             el.addEventListener('change', () => {
-                if (sel === '#idCardShowEmail')   idCardSettings.show_email = el.checked;
-                if (sel === '#idCardShowStarted') idCardSettings.show_started_at = el.checked;
-                if (sel === '#idCardShowBranch')  idCardSettings.show_branch_location = el.checked;
-                if (sel === '#idCardShowQr')      idCardSettings.show_qr = el.checked;
+                if (sel === '#idCardShowRole')       idCardSettings.show_role = el.checked;
+                if (sel === '#idCardShowStaffId')    idCardSettings.show_staff_id = el.checked;
+                if (sel === '#idCardShowEmail')      idCardSettings.show_email = el.checked;
+                if (sel === '#idCardShowStarted')    idCardSettings.show_started_at = el.checked;
+                if (sel === '#idCardShowIssued')     idCardSettings.show_issued = el.checked;
+                if (sel === '#idCardShowBranch')     idCardSettings.show_branch_location = el.checked;
+                if (sel === '#idCardShowBranchName') idCardSettings.show_branch_name = el.checked;
+                if (sel === '#idCardShowQr')         idCardSettings.show_qr = el.checked;
                 renderIdCardPreview();
             });
         });
@@ -7148,10 +7168,13 @@
         return Array.isArray(list) ? list : [];
     }
     // Effective denials for the SIGNED-IN user = role denials ∪ their own.
+    // Super-roles (Director/System Admin) are never hidden by a per-user
+    // override — a leftover per-user "off" must not silently lock the Director
+    // out of a page their role already allows (e.g. Showroom).
     function deniedViewsForCurrentUser() {
         if (currentRole() === 'system_manager') return [];
         const roleD = deniedViewsForRole(currentRole());
-        const userD = session ? deniedViewsForUser(session.id) : [];
+        const userD = isSuperRole() ? [] : (session ? deniedViewsForUser(session.id) : []);
         return Array.from(new Set([...roleD, ...userD]));
     }
 
