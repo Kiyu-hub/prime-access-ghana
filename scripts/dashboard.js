@@ -1911,6 +1911,10 @@
             staffList = await window.CH.staff.list();
             // Ensure branches loaded for the select
             if (branches.length === 0) branches = await window.CH.branches.list();
+            // Warehouses power the Workplace=Warehouse dropdown for any staff.
+            if (!warehousesCache || warehousesCache.length === 0) {
+                try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
+            }
             populateBranchSelect();
             renderStaff();
             // Refresh branches view counts if currently shown
@@ -1988,10 +1992,20 @@
         sel.innerHTML = opts;
     }
 
-    function toggleStaffWarehouseField() {
-        const wrap = $('#staffWarehouseField');
-        if (!wrap) return;
-        wrap.style.display = (els.staffRole.value === 'warehouse_manager') ? '' : 'none';
+    // Workplace selector drives whether the staff is posted to a Showroom
+    // (branch) or a Warehouse, and which dropdown shows. Warehouse Manager is
+    // always a warehouse posting (locked). What's chosen here is what the ID
+    // card displays for that staff.
+    function toggleStaffWorkplaceFields() {
+        const wpSel = $('#staffWorkplace');
+        const branchWrap = $('#staffBranchField');
+        const whWrap = $('#staffWarehouseField');
+        const forceWarehouse = els.staffRole.value === 'warehouse_manager';
+        if (forceWarehouse && wpSel) wpSel.value = 'warehouse';
+        if (wpSel) wpSel.disabled = forceWarehouse;
+        const isWarehouse = wpSel ? wpSel.value === 'warehouse' : false;
+        if (branchWrap) branchWrap.style.display = isWarehouse ? 'none' : '';
+        if (whWrap) whWrap.style.display = isWarehouse ? '' : 'none';
     }
 
     // "Manages all branches / warehouses" only makes sense for branch_manager,
@@ -2015,7 +2029,8 @@
         populateStaffRoleOptions();
         populateStaffWarehouseSelect();
         els.staffRole.value = 'staff';
-        toggleStaffWarehouseField();
+        const wpAdd = $('#staffWorkplace'); if (wpAdd) wpAdd.value = 'showroom';
+        toggleStaffWorkplaceFields();
         toggleStaffManagesAllField();
         // Clear the manages-all toggles for a new staff
         const a1 = document.getElementById('staffManagesAllBranches');
@@ -2051,10 +2066,13 @@
         // correct role instead of silently dropping to Director.
         const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin', 'system_manager'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
         els.staffRole.value = enumRole;
-        toggleStaffWarehouseField();
-        toggleStaffManagesAllField();
         const whSel = $('#staffWarehouse');
         if (whSel) whSel.value = s.warehouse_id || '';
+        // Workplace follows the existing posting: warehouse if one is set.
+        const wpEdit = $('#staffWorkplace');
+        if (wpEdit) wpEdit.value = s.warehouse_id ? 'warehouse' : 'showroom';
+        toggleStaffWorkplaceFields();
+        toggleStaffManagesAllField();
         els.staffIsAdmin.value = s.is_admin ? '1' : '';
         const a1 = document.getElementById('staffManagesAllBranches');
         const a2 = document.getElementById('staffManagesAllWarehouses');
@@ -2116,16 +2134,25 @@
     })();
 
     if (els.staffRole) els.staffRole.addEventListener('change', () => {
-        toggleStaffWarehouseField();
+        toggleStaffWorkplaceFields();
         toggleStaffManagesAllField();
     });
+    {
+        const wpSel = document.getElementById('staffWorkplace');
+        if (wpSel) wpSel.addEventListener('change', toggleStaffWorkplaceFields);
+    }
 
     els.staffForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const id = els.staffEditId.value;
         const role = els.staffRole.value || 'staff';
         const warehouseSel = $('#staffWarehouse');
-        const warehouseId = (role === 'warehouse_manager' && warehouseSel) ? (warehouseSel.value || null) : null;
+        const workplace = ($('#staffWorkplace') && $('#staffWorkplace').value) || 'showroom';
+        // A warehouse posting (explicit choice, or any Warehouse Manager) gets a
+        // warehouse_id; a showroom posting clears it. This is the signal the ID
+        // card reads to show Warehouse vs Showroom.
+        const isWarehousePosting = workplace === 'warehouse' || role === 'warehouse_manager';
+        const warehouseId = (isWarehousePosting && warehouseSel) ? (warehouseSel.value || null) : null;
         const allBranchesEl = document.getElementById('staffManagesAllBranches');
         const allWarehousesEl = document.getElementById('staffManagesAllWarehouses');
         // Super roles (Director / System Admin) always manage everything —
@@ -2142,7 +2169,7 @@
             manages_all_warehouses: superRole || !!(allWarehousesEl && allWarehousesEl.checked),
         };
         if (!payload.name || !payload.email) { toast('Name and email are required.', 'error'); return; }
-        if (role === 'warehouse_manager' && !warehouseId) { toast('Warehouse Manager must be assigned to a warehouse.', 'error'); return; }
+        if (isWarehousePosting && !warehouseId) { toast(role === 'warehouse_manager' ? 'Warehouse Manager must be assigned to a warehouse.' : 'Pick a warehouse for this staff, or set Workplace to Showroom.', 'error'); return; }
         if (!id && (!payload.password || payload.password.length < 6)) {
             toast('Password must be at least 6 characters.', 'error');
             return;
@@ -6853,20 +6880,31 @@
         const startedAt = staffRow.started_at
             ? new Date(staffRow.started_at).toLocaleDateString()
             : '—';
-        // Resolve branch location from cache or staff row
+        // Workplace resolution: a staff posted to a warehouse (warehouse_id set)
+        // shows their warehouse; everyone else shows their showroom (branch).
+        // This is what makes warehouse staff cards read "Warehouse" and showroom
+        // staff cards read "Showroom".
         const branch = (branches || []).find((b) => b.id === staffRow.branch_id);
-        const branchLocation = (branch && branch.location)
-            || staffRow.branch_location
-            || (staffRow.branch_name || '');
+        const isWarehousePosting = !!staffRow.warehouse_id;
+        const warehouse = isWarehousePosting
+            ? (warehousesCache || []).find((w) => w.id === staffRow.warehouse_id)
+            : null;
+        const placeLabel = isWarehousePosting ? 'Warehouse' : 'Showroom';
+        const placeLocation = isWarehousePosting
+            ? ((warehouse && warehouse.location) || staffRow.warehouse_name || '—')
+            : ((branch && branch.location) || staffRow.branch_location || staffRow.branch_name || '—');
+        const placeName = isWarehousePosting
+            ? ((warehouse && warehouse.name) || staffRow.warehouse_name || '—')
+            : ((branch && branch.name) || staffRow.branch_name || '—');
         const qrPayload = JSON.stringify({
             id: staffRow.id,
             name: staffRow.name,
             email: staffRow.email,
             staff_code: staffRow.staff_code,
             role: staffRow.role,
-            branch_id: staffRow.branch_id,
-            branch_name: staffRow.branch_name,
-            branch_location: branchLocation,
+            workplace: isWarehousePosting ? 'warehouse' : 'showroom',
+            workplace_name: placeName,
+            workplace_location: placeLocation,
             started_at: staffRow.started_at,
             issued: new Date().toISOString().slice(0, 10),
         });
@@ -6887,18 +6925,13 @@
         if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field id-card__field--email"><b>Email</b> <span>${escapeHtml(staffRow.email)}</span></div>`);
         if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
         if (settings.show_branch_location) {
-            // Always render the row when the toggle is on. Prefer an explicit
-            // location, fall back to the branch name, then a dash. This way the
-            // field is never silently swallowed when location isn't set.
-            const branchDisplay = (branch && branch.location)
-                || staffRow.branch_location
-                || staffRow.branch_name
-                || '—';
-            fields.push(`<div class="id-card__field"><b>Branch</b> ${escapeHtml(branchDisplay)}</div>`);
+            // Location row — label + value follow the staff's workplace
+            // (warehouse vs showroom). Never silently swallowed: falls back to a
+            // dash when nothing is set.
+            fields.push(`<div class="id-card__field"><b>${placeLabel}</b> ${escapeHtml(placeLocation)}</div>`);
         }
         if (settings.show_branch_name) {
-            const nameDisplay = (branch && branch.name) || staffRow.branch_name || '—';
-            fields.push(`<div class="id-card__field"><b>Showroom</b> ${escapeHtml(nameDisplay)}</div>`);
+            fields.push(`<div class="id-card__field"><b>${placeLabel} name</b> ${escapeHtml(placeName)}</div>`);
         }
         if (settings.show_issued) {
             const issued = new Date().toLocaleDateString();
@@ -6932,15 +6965,34 @@
         </div>`;
     }
 
+    let idCardPreviewStaffId = '';
+
+    // Fills the "Preview as" dropdown with real staff and keeps a default
+    // selection (the chosen one, else the first staff with a code).
+    function populateIdCardPreviewStaff() {
+        const sel = $('#idCardPreviewStaff');
+        if (!sel) return;
+        const list = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        sel.innerHTML = list.length
+            ? list.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}${s.staff_code ? ' · ' + escapeHtml(s.staff_code) : ''}</option>`).join('')
+            : '<option value="">No staff yet</option>';
+        if (!idCardPreviewStaffId || !list.some((s) => s.id === idCardPreviewStaffId)) {
+            const def = list.find((s) => s.staff_code) || list[0];
+            idCardPreviewStaffId = def ? def.id : '';
+        }
+        sel.value = idCardPreviewStaffId;
+    }
+
     function renderIdCardPreview() {
         const host = $('#idCardPreview');
         if (!host) return;
-        // Prefer a real, printable subject: skip System Admin (infra account
-        // that doesn't get cards printed) and prefer staff who actually have
-        // a staff_code assigned. Fall back to a synthetic preview if needed.
+        // Preview a real staff member — the one picked in "Preview as", else the
+        // first staff with a code. Falls back to a synthetic card only when there
+        // are no staff at all.
         const list = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s));
-        const withCode = list.find((s) => s.staff_code);
-        const subject = withCode || list[0] || {
+        const picked = idCardPreviewStaffId ? list.find((s) => s.id === idCardPreviewStaffId) : null;
+        const subject = picked || list.find((s) => s.staff_code) || list[0] || {
             id: 'preview',
             name: 'Ama Yeboah',
             email: 'ama@clasikalhomes.com',
@@ -6979,6 +7031,15 @@
         if (!staffList || staffList.length === 0) {
             try { staffList = await window.CH.staff.list(); } catch (_) {}
         }
+        // Warehouses power the warehouse-posting location/name on the card.
+        if (!warehousesCache || warehousesCache.length === 0) {
+            try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
+        }
+        // Branches power the showroom-posting location/name on the card.
+        if (!branches || branches.length === 0) {
+            try { branches = await window.CH.branches.list(); } catch (_) {}
+        }
+        populateIdCardPreviewStaff();
         // For Director, restrict the visible templates to whatever the
         // System Admin allowed. Hide buttons for any template that isn't
         // in the allowed set. Also flip the active template to a permitted
@@ -7033,6 +7094,11 @@
     }
 
     function wireIdCardControls() {
+        const previewStaff = $('#idCardPreviewStaff');
+        if (previewStaff) previewStaff.addEventListener('change', () => {
+            idCardPreviewStaffId = previewStaff.value || '';
+            renderIdCardPreview();
+        });
         const pick = $('#idCardTemplatePicker');
         if (pick) pick.addEventListener('click', (e) => {
             const btn = e.target.closest('[data-template]');

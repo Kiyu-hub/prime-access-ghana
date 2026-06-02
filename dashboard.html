@@ -5251,8 +5251,8 @@
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowEmail" checked /> Show email</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowStarted" checked /> Show start date</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowIssued" /> Show issue date</label>
-                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranch" checked /> Show branch location</label>
-                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranchName" /> Show showroom name</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranch" checked /> Show location (showroom / warehouse)</label>
+                            <label class="idc-toggle"><input type="checkbox" id="idCardShowBranchName" /> Show workplace name</label>
                             <label class="idc-toggle"><input type="checkbox" id="idCardShowQr" checked /> Show QR code</label>
                         </div>
                         <div class="idc-control">
@@ -5278,8 +5278,12 @@
 
                     <div class="idc-preview-wrap">
                         <div class="idc-preview-label">Live preview</div>
+                        <div class="idc-control" style="width:100%;max-width:320px;">
+                            <label for="idCardPreviewStaff">Preview as</label>
+                            <select id="idCardPreviewStaff"></select>
+                        </div>
                         <div class="idc-card-host" id="idCardPreview"></div>
-                        <div class="idc-hint">Preview uses the first active staff member. Real cards use each staff's real photo, ID code, email, and start date.</div>
+                        <div class="idc-hint">Pick any staff member to preview their real card — photo, ID code, email, start date, and their showroom or warehouse.</div>
                     </div>
                 </div>
             </section>
@@ -6134,7 +6138,14 @@
                         <input type="text" id="staffPassword" placeholder="Set or leave blank to keep existing" />
                     </div>
                     <div>
-                        <label for="staffBranch">Branch</label>
+                        <label for="staffWorkplace">Workplace</label>
+                        <select id="staffWorkplace">
+                            <option value="showroom">Showroom</option>
+                            <option value="warehouse">Warehouse</option>
+                        </select>
+                    </div>
+                    <div id="staffBranchField">
+                        <label for="staffBranch">Showroom</label>
                         <select id="staffBranch"></select>
                     </div>
                     <div>
