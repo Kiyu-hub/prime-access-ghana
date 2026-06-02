@@ -6921,22 +6921,19 @@
                 qrSvg = qrSvg.replace('<svg ', '<svg width="100%" height="100%" preserveAspectRatio="xMidYMid meet" ');
             } catch (_) { qrSvg = ''; }
         }
+        // Each field: tiny caption label on top, the value on its own line below.
+        // Both label and value are explicit elements so the value always renders
+        // (a raw text node can vanish inside the column flex layout).
         const fields = [];
-        if (settings.show_email && staffRow.email) fields.push(`<div class="id-card__field id-card__field--email"><b>Email</b> <span>${escapeHtml(staffRow.email)}</span></div>`);
-        if (settings.show_started_at) fields.push(`<div class="id-card__field"><b>Joined</b> ${escapeHtml(startedAt)}</div>`);
-        if (settings.show_branch_location) {
-            // Location row — label + value follow the staff's workplace
-            // (warehouse vs showroom). Never silently swallowed: falls back to a
-            // dash when nothing is set.
-            fields.push(`<div class="id-card__field"><b>${placeLabel}</b> ${escapeHtml(placeLocation)}</div>`);
-        }
-        if (settings.show_branch_name) {
-            fields.push(`<div class="id-card__field"><b>${placeLabel} name</b> ${escapeHtml(placeName)}</div>`);
-        }
-        if (settings.show_issued) {
-            const issued = new Date().toLocaleDateString();
-            fields.push(`<div class="id-card__field"><b>Issued</b> ${escapeHtml(issued)}</div>`);
-        }
+        const field = (label, value, cls) =>
+            `<div class="id-card__field${cls ? ' ' + cls : ''}"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></div>`;
+        if (settings.show_email && staffRow.email) fields.push(field('Email', staffRow.email, 'id-card__field--email'));
+        if (settings.show_started_at) fields.push(field('Joined', startedAt));
+        // Location row — label + value follow the staff's workplace (warehouse
+        // vs showroom). Never silently swallowed: falls back to a dash.
+        if (settings.show_branch_location) fields.push(field(placeLabel, placeLocation));
+        if (settings.show_branch_name) fields.push(field(placeLabel + ' name', placeName));
+        if (settings.show_issued) fields.push(field('Issued', new Date().toLocaleDateString()));
         // Branding: classic / modern / minimal keep their original wordmark-
         // only label (no resizing or layout change). Heritage and Crest are
         // the on-brand variants and include the company logo beside the
