@@ -743,28 +743,28 @@
             color: var(--idc-accent, #0369A1);
             font-weight: 700;
         }
+        /* Stacked field: tiny caption label on top, the value underneath. */
         .id-card__field {
-            font-size: 0.7rem;
-            color: var(--c-ink-3);
+            font-size: 0.72rem;
+            color: var(--c-ink-2);
             display: flex;
-            gap: 6px;
-            white-space: nowrap;
+            flex-direction: column;
+            gap: 0;
+            line-height: 1.25;
+            min-width: 0;
             overflow: hidden;
-            text-overflow: ellipsis;
+            word-break: break-word;
         }
         .id-card__field b {
-            color: var(--c-ink-2);
-            font-weight: 600;
-            min-width: 46px;
-            flex-shrink: 0;
+            display: block;
+            color: var(--c-ink-4);
+            font-weight: 700;
+            font-size: 0.46rem;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            line-height: 1.2;
         }
-        /* Email can be long — let it wrap so the full address shows
-           instead of being clipped with an ellipsis. */
-        .id-card__field--email {
-            white-space: normal;
-            overflow: visible;
-            align-items: flex-start;
-        }
+        /* Email can be long — let the full address wrap onto more lines. */
         .id-card__field--email span { word-break: break-all; }
         .id-card__bottom {
             display: flex;
