@@ -1888,14 +1888,20 @@
     // Build the role <select> options for the current viewer. Director and
     // System Admin can only be assigned by a System Admin (the overall
     // manager); everyone else gets the three operational roles.
-    function populateStaffRoleOptions() {
+    function populateStaffRoleOptions(editingRole) {
         if (!els.staffRole) return;
         const roles = [
             ['staff', 'Staff'],
             ['branch_manager', 'Branch Manager'],
             ['warehouse_manager', 'Warehouse Manager'],
         ];
-        if (currentRole() === 'system_manager') {
+        // Super-role options are normally assignable only by the System Admin.
+        // ALSO include them whenever the account being edited is itself a super
+        // role, so a super account can never silently lose its role: without the
+        // matching <option> the <select> value would fall back to 'staff' and a
+        // save would strip the role — locking the System Admin out of its own
+        // tools (dev mode, permissions, media, import) with no way back via UI.
+        if (currentRole() === 'system_manager' || editingRole === 'admin' || editingRole === 'system_manager') {
             roles.push(['admin', 'Director']);
             roles.push(['system_manager', 'System Admin']);
         }
@@ -2011,11 +2017,17 @@
     // "Manages all branches / warehouses" only makes sense for branch_manager,
     // warehouse_manager, and Director. Plain staff don't manage anything.
     function toggleStaffManagesAllField() {
-        const wrap = document.getElementById('staffManagesAllField');
-        if (!wrap) return;
         const role = els.staffRole.value;
-        const show = (role === 'branch_manager' || role === 'warehouse_manager' || isSuperRole(role));
-        wrap.style.display = show ? '' : 'none';
+        const wrap = document.getElementById('staffManagesAllField');
+        if (wrap) {
+            const show = (role === 'branch_manager' || role === 'warehouse_manager' || isSuperRole(role));
+            wrap.style.display = show ? '' : 'none';
+        }
+        // Super roles (System Admin / Director) always keep access to ALL
+        // branches and warehouses — the branch picker is only the location
+        // printed on their ID card, never an access limit.
+        const superHint = document.getElementById('staffSuperPostingHint');
+        if (superHint) superHint.style.display = isSuperRole(role) ? '' : 'none';
     }
 
     function openStaffAdd() {
@@ -2057,14 +2069,14 @@
         els.staffPasswordHint.textContent = '(leave blank to keep existing)';
         els.staffPasswordReq.style.display = 'none';
         els.staffPassword.required = false;
-        populateBranchSelect();
-        populateStaffRoleOptions();
-        populateStaffWarehouseSelect();
-        els.staffBranch.value = s.branch_id || '';
         // Normalize legacy free-text role to enum on display. Includes the two
         // super roles so a System Admin editing their own account keeps the
         // correct role instead of silently dropping to Director.
         const enumRole = ['staff', 'branch_manager', 'warehouse_manager', 'admin', 'system_manager'].includes(s.role) ? s.role : (s.is_admin ? 'admin' : 'staff');
+        populateBranchSelect();
+        populateStaffRoleOptions(enumRole);
+        populateStaffWarehouseSelect();
+        els.staffBranch.value = s.branch_id || '';
         els.staffRole.value = enumRole;
         const whSel = $('#staffWarehouse');
         if (whSel) whSel.value = s.warehouse_id || '';
@@ -2181,6 +2193,15 @@
         try {
             const prev = id ? staffList.find((x) => x.id === id) : null;
             const prevRole = prev ? (prev.role || (prev.is_admin ? 'admin' : 'staff')) : null;
+            // Anti-lockout: never let the System Admin strip its OWN super role.
+            // Doing so hides every System-Admin-only feature (dev mode, permissions,
+            // media, import) and removes the System-Admin option from this form —
+            // making it impossible to undo without a direct database edit. To set a
+            // branch for the ID card, keep the role and use Workplace/Showroom below.
+            if (id && id === session.id && isSuperRole(prevRole) && !isSuperRole(role)) {
+                toast('You can\'t remove your own System Admin / Director role — you\'d lose access to dev mode and admin tools. Keep the role and set the branch via Workplace below (access stays all-branches).', 'error');
+                return;
+            }
             let staffId = id;
             if (id) {
                 await window.CH.staff.update(id, payload);
