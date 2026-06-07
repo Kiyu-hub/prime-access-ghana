@@ -202,6 +202,7 @@ A version bump is just editing `scripts/version.js`. The service worker uses tha
 | **Phase 5** | System Admin hardening — overall manager above the Director, no branch assignment, hidden from every staff listing / dropdown / report. Reports overhaul — date-range filter (presets + custom), sales summary, sales by branch, payments received by account & method, and a full date+time transaction ledger, all role-tailored and exported to the branded Business Report PDF |
 | **Phase 6** | System Admin permissions panel — tick/untick page access per role (incl. Director); System Admin gains full unrestricted access (never limited by feature flags) and can verify invoices without a warehouse; dev mode made strictly private to the System Admin (no effect on any other user) |
 | **Phase 7** | Permissions panel rebuilt as one matrix table + a **By user** tab — System Admin can set page visibility for an individual user on top of the role rules |
+| **Phase 8** | **Action permissions** — page access and *what you can do* are now separate. Permissions panel gains **Actions · by role** and **Actions · by user** tabs (allow-list): normal Staff cannot add/edit/delete products until the System Admin grants it, to the whole role or one person. Staff edit/delete/add buttons hide when not granted. Staff edit form hardened against System Admin self-downgrade/lockout. Staff ID Card preview grows to fit every field when all toggles are on |
 
 ---
 

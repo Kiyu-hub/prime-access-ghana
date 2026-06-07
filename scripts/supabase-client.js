@@ -959,6 +959,47 @@
                 .upsert({ staff_id: staffId, denied_views: deniedViews, updated_at: new Date().toISOString() }, { onConflict: 'staff_id' });
             if (error) throw error;
         },
+
+        /* ---- Action permissions (Phase 8) ----------------------
+           Unlike page access (a deny-list), actions are an ALLOW-list:
+           a role/user may perform an action only if it's granted. Missing
+           table/rows degrade to {} so the app falls back to JS defaults. */
+        async getAllActions() {
+            try {
+                const { data, error } = await client.from('role_action_permissions').select('role, allowed_actions');
+                if (error) throw error;
+                const map = {};
+                (data || []).forEach((r) => {
+                    let v = r.allowed_actions;
+                    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (_) { v = []; } }
+                    map[r.role] = Array.isArray(v) ? v : [];
+                });
+                return map;
+            } catch (_) { return {}; }
+        },
+        async setActionAllowed(role, allowedActions) {
+            const { error } = await client.from('role_action_permissions')
+                .upsert({ role, allowed_actions: allowedActions, updated_at: new Date().toISOString() }, { onConflict: 'role' });
+            if (error) throw error;
+        },
+        async getAllUserActions() {
+            try {
+                const { data, error } = await client.from('user_action_permissions').select('staff_id, allowed_actions');
+                if (error) throw error;
+                const map = {};
+                (data || []).forEach((r) => {
+                    let v = r.allowed_actions;
+                    if (typeof v === 'string') { try { v = JSON.parse(v); } catch (_) { v = []; } }
+                    map[r.staff_id] = Array.isArray(v) ? v : [];
+                });
+                return map;
+            } catch (_) { return {}; }
+        },
+        async setUserActionAllowed(staffId, allowedActions) {
+            const { error } = await client.from('user_action_permissions')
+                .upsert({ staff_id: staffId, allowed_actions: allowedActions, updated_at: new Date().toISOString() }, { onConflict: 'staff_id' });
+            if (error) throw error;
+        },
     };
 
     /* ---- dev/live mode helpers (Phase 4) -------------------- */

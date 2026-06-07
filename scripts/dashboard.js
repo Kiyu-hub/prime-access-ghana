@@ -377,7 +377,7 @@
         if (view === 'new-sale') initNewSale();
         if (view === 'purchases') loadPurchases();
         if (view === 'verify-invoice') initVerifyInvoice();
-        if (view === 'permissions') renderPermissions();
+        if (view === 'permissions') renderActivePermTab();
     }
 
     /* ---------- logout ---------- */
@@ -581,6 +581,10 @@
 
     /* ---------- product modal ---------- */
     function openProductAdd() {
+        if (!canCurrentUserDo('product.create')) {
+            toast('You don\'t have permission to add products. Ask the System Admin to grant it.', 'error');
+            return;
+        }
         if (!session.branch_id && !session.is_admin) {
             toast('You must be assigned to a branch before adding products.', 'error');
             return;
@@ -599,6 +603,10 @@
     function openProductEdit(id) {
         const p = products.find((x) => x.id === id);
         if (!p) return;
+        if (!canCurrentUserDo('product.edit')) {
+            toast('You don\'t have permission to edit product info. Ask the System Admin to grant it.', 'error');
+            return;
+        }
         els.modalTitle.textContent = 'Edit Product · ' + (p.item_no || p.description || '');
         els.editId.value = id;
         populateProductFormDropdowns();
@@ -696,6 +704,13 @@
         }
 
         const editId = els.editId.value;
+        // Permission guard: editing an existing product needs product.edit;
+        // creating a new one needs product.create. Backstops the button gating.
+        const neededAction = editId ? 'product.edit' : 'product.create';
+        if (!canCurrentUserDo(neededAction)) {
+            toast('You don\'t have permission to ' + (editId ? 'edit' : 'add') + ' products.', 'error');
+            return;
+        }
         const branchId = editId
             ? (products.find((p) => p.id === editId)?.branch_id || session.branch_id)
             : session.branch_id;
@@ -775,6 +790,10 @@
     async function deleteProduct(id) {
         const p = products.find((x) => x.id === id);
         if (!p) return;
+        if (!canCurrentUserDo('product.delete')) {
+            toast('You don\'t have permission to delete products. Ask the System Admin to grant it.', 'error');
+            return;
+        }
         const label = p.item_no ? p.item_no + ' — ' + (p.description || '') : (p.description || 'this product');
         if (!confirm('Delete "' + label + '"?\nThis cannot be undone.')) return;
         try {
@@ -7236,10 +7255,57 @@
         ['warehouse_manager', 'Warehouse Manager'], ['staff', 'Staff'],
     ];
     const PERMISSION_ROLE_LABEL = Object.fromEntries(PERMISSION_ROLES);
-    let permissionsCache = {};      // { role: [deniedView, ...] }
-    let userPermissionsCache = {};  // { staff_id: [deniedView, ...] }
-    let activePermTab = 'role';
+    // Manageable ACTIONS (what a role/user can DO), in display order. These are
+    // an allow-list: a role/user can perform an action only when it's granted.
+    const PERMISSION_ACTIONS = [
+        ['product.create', 'Add new product'],
+        ['product.edit',   'Edit product info'],
+        ['product.delete', 'Delete product'],
+    ];
+    const ALL_ACTION_KEYS = PERMISSION_ACTIONS.map(([k]) => k);
+    // Defaults used only when a role has NO stored row yet (table not migrated
+    // or never saved): Director + managers can manage products; Staff cannot.
+    const ACTION_ROLE_DEFAULTS = {
+        admin:             [...ALL_ACTION_KEYS],
+        branch_manager:    [...ALL_ACTION_KEYS],
+        warehouse_manager: [...ALL_ACTION_KEYS],
+        staff:             [],
+    };
+    let permissionsCache = {};            // { role: [deniedView, ...] }
+    let userPermissionsCache = {};        // { staff_id: [deniedView, ...] }
+    let actionPermissionsCache = {};      // { role: [allowedAction, ...] }
+    let userActionPermissionsCache = {};  // { staff_id: [allowedAction, ...] }
+    let activePermTab = 'role';           // 'role' | 'user' | 'action-role' | 'action-user'
     let selectedPermUserId = '';
+    let selectedPermActionUserId = '';
+
+    // Granted actions for a role. System Admin is never restricted (all).
+    function allowedActionsForRole(role) {
+        if (role === 'system_manager') return [...ALL_ACTION_KEYS];
+        const stored = actionPermissionsCache[role];
+        if (Array.isArray(stored)) return stored;
+        return ACTION_ROLE_DEFAULTS[role] || [];
+    }
+    function allowedActionsForUser(staffId) {
+        const list = userActionPermissionsCache[staffId];
+        return Array.isArray(list) ? list : [];
+    }
+    // Can the SIGNED-IN user perform an action? = role grant OR personal grant.
+    function canCurrentUserDo(action) {
+        if (currentRole() === 'system_manager') return true;
+        const roleAllowed = allowedActionsForRole(currentRole());
+        const userAllowed = session ? allowedActionsForUser(session.id) : [];
+        return roleAllowed.includes(action) || userAllowed.includes(action);
+    }
+    // Mirror the current user's action grants onto the body so CSS can hide the
+    // edit / delete / add affordances they can't use. The click + submit guards
+    // are the real enforcement; this is just so dead buttons don't show.
+    function applyActionPermissionsToSelf() {
+        const b = document.body;
+        b.dataset.canProductCreate = canCurrentUserDo('product.create') ? '1' : '0';
+        b.dataset.canProductEdit   = canCurrentUserDo('product.edit')   ? '1' : '0';
+        b.dataset.canProductDelete = canCurrentUserDo('product.delete') ? '1' : '0';
+    }
 
     // Denied views for a role. System Admin is never restricted.
     function deniedViewsForRole(role) {
@@ -7280,15 +7346,23 @@
     async function loadPermissionsOnBoot() {
         try {
             if (window.CH && window.CH.permissions) {
-                const [roleMap, userMap] = await Promise.all([
+                const [roleMap, userMap, actionMap, userActionMap] = await Promise.all([
                     window.CH.permissions.getAll(),
                     window.CH.permissions.getAllUsers(),
+                    window.CH.permissions.getAllActions ? window.CH.permissions.getAllActions() : {},
+                    window.CH.permissions.getAllUserActions ? window.CH.permissions.getAllUserActions() : {},
                 ]);
                 permissionsCache = roleMap || {};
                 userPermissionsCache = userMap || {};
+                actionPermissionsCache = actionMap || {};
+                userActionPermissionsCache = userActionMap || {};
             }
-        } catch (_) { permissionsCache = {}; userPermissionsCache = {}; }
+        } catch (_) {
+            permissionsCache = {}; userPermissionsCache = {};
+            actionPermissionsCache = {}; userActionPermissionsCache = {};
+        }
         applyRolePermissionsToSelf();
+        applyActionPermissionsToSelf();
     }
     loadPermissionsOnBoot();
 
@@ -7359,6 +7433,83 @@
         <p class="perms-user-empty">Ticked = visible for this user. Unticked = hidden for this user only. Role-level blocks still apply on top.</p>`;
     }
 
+    // ----- "Actions · by role" matrix: rows = actions, columns = roles -----
+    function renderActionPermissions() {
+        const host = document.getElementById('permActionsHost');
+        if (!host) return;
+        if (currentRole() !== 'system_manager') {
+            host.innerHTML = '<p style="color:var(--c-ink-5);">Only the System Admin can manage permissions.</p>';
+            return;
+        }
+        const heads = PERMISSION_ROLES.map(([role, label]) =>
+            `<th style="text-align:center;">${escapeHtml(label)}<br><label class="perms-col-all"><input type="checkbox" data-perm-action-col="${role}" /> all</label></th>`).join('');
+        const rows = PERMISSION_ACTIONS.map(([a, alabel]) => {
+            const cells = PERMISSION_ROLES.map(([role]) => {
+                const allowed = allowedActionsForRole(role).includes(a);
+                return `<td style="text-align:center;"><input type="checkbox" data-perm-action-role="${role}" data-perm-action="${a}" ${allowed ? 'checked' : ''} /></td>`;
+            }).join('');
+            return `<tr><td>${escapeHtml(alabel)}</td>${cells}</tr>`;
+        }).join('');
+        host.innerHTML = `<div class="table-scroll"><table class="tbl perms-table">
+            <thead><tr><th>Action</th>${heads}</tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>
+        <p class="perms-user-empty">Ticked = that role can perform the action. Staff have none by default — tick to grant. You (System Admin) can always do everything.</p>`;
+    }
+
+    async function populatePermsActionUserSelect() {
+        const sel = document.getElementById('permsActionUserSelect');
+        if (!sel) return;
+        await ensureStaffLoaded();
+        const users = (staffList || []).filter((s) => s.name && !isSystemAdminStaff(s))
+            .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        sel.innerHTML = ['<option value="">— Select a user —</option>']
+            .concat(users.map((s) => `<option value="${s.id}">${escapeHtml(s.name)} · ${escapeHtml(PERMISSION_ROLE_LABEL[s.role] || s.role || 'Staff')}</option>`))
+            .join('');
+        if (selectedPermActionUserId) sel.value = selectedPermActionUserId;
+    }
+
+    // ----- "Actions · by user": grant one person extra actions -----
+    function renderActionUserPermissions(staffId) {
+        const host = document.getElementById('permActionsUserHost');
+        if (!host) return;
+        if (!staffId) { host.innerHTML = '<p class="perms-user-empty">Pick a user above to grant them specific actions.</p>'; return; }
+        const u = (staffList || []).find((s) => s.id === staffId);
+        if (!u) { host.innerHTML = '<p class="perms-user-empty">User not found.</p>'; return; }
+        const role = ['staff', 'branch_manager', 'warehouse_manager', 'admin', 'system_manager'].includes(u.role) ? u.role : 'staff';
+        const roleAllowed = new Set(allowedActionsForRole(role));
+        const userAllowed = new Set(allowedActionsForUser(staffId));
+        const rows = PERMISSION_ACTIONS.map(([a, alabel]) => {
+            const note = roleAllowed.has(a) ? ' <small style="color:var(--c-ink-5);">(already allowed for their role)</small>' : '';
+            return `<tr><td>${escapeHtml(alabel)}${note}</td>
+                <td style="text-align:center;"><input type="checkbox" data-perm-action-user="${a}" ${userAllowed.has(a) ? 'checked' : ''} /></td></tr>`;
+        }).join('');
+        host.innerHTML = `<div class="table-scroll"><table class="tbl perms-table">
+            <thead><tr><th>Action</th><th style="text-align:center;">${escapeHtml(u.name)} can</th></tr></thead>
+            <tbody>${rows}</tbody>
+        </table></div>
+        <p class="perms-user-empty">Ticked = this person can perform the action, on top of whatever their role allows. Use this to grant one Staff member product editing without granting all Staff.</p>`;
+    }
+
+    // Show + render whichever permissions tab is active. Called when entering
+    // the view and on every tab click so the panel and its data stay in sync.
+    function renderActivePermTab() {
+        const panels = {
+            'role': 'permsByRole', 'user': 'permsByUser',
+            'action-role': 'permsByActionRole', 'action-user': 'permsByActionUser',
+        };
+        Object.entries(panels).forEach(([t, id]) => {
+            const el = document.getElementById(id);
+            if (el) el.style.display = (t === activePermTab) ? '' : 'none';
+        });
+        document.querySelectorAll('.perms-tab').forEach((tab) =>
+            tab.classList.toggle('is-active', tab.dataset.permTab === activePermTab));
+        if (activePermTab === 'user') populatePermsUserSelect().then(() => renderUserPermissions(selectedPermUserId));
+        else if (activePermTab === 'action-role') renderActionPermissions();
+        else if (activePermTab === 'action-user') populatePermsActionUserSelect().then(() => renderActionUserPermissions(selectedPermActionUserId));
+        else renderPermissions();
+    }
+
     async function savePermissions() {
         if (currentRole() !== 'system_manager') return;
         const btn = document.getElementById('permsSaveBtn');
@@ -7375,6 +7526,30 @@
                 userPermissionsCache[selectedPermUserId] = denied;
                 if (session && selectedPermUserId === session.id) applyRolePermissionsToSelf();
                 toast('Saved. ' + ((staffList.find((s) => s.id === selectedPermUserId) || {}).name || 'User') + ' sees the change on their next page load.', 'success');
+            } else if (activePermTab === 'action-role') {
+                const host = document.getElementById('permActionsHost');
+                const allowedByRole = {};
+                PERMISSION_ROLES.forEach(([role]) => { allowedByRole[role] = []; });
+                host.querySelectorAll('input[data-perm-action-role]').forEach((cb) => {
+                    if (cb.checked) allowedByRole[cb.dataset.permActionRole].push(cb.dataset.permAction);
+                });
+                for (const [role, allowed] of Object.entries(allowedByRole)) {
+                    await window.CH.permissions.setActionAllowed(role, allowed);
+                }
+                actionPermissionsCache = allowedByRole;
+                applyActionPermissionsToSelf();
+                toast('Action permissions saved. Affected users see the change on their next page load.', 'success');
+            } else if (activePermTab === 'action-user') {
+                if (!selectedPermActionUserId) { toast('Pick a user first.', 'error'); return; }
+                const host = document.getElementById('permActionsUserHost');
+                const allowed = [];
+                host.querySelectorAll('input[data-perm-action-user]').forEach((cb) => {
+                    if (cb.checked) allowed.push(cb.dataset.permActionUser);
+                });
+                await window.CH.permissions.setUserActionAllowed(selectedPermActionUserId, allowed);
+                userActionPermissionsCache[selectedPermActionUserId] = allowed;
+                if (session && selectedPermActionUserId === session.id) applyActionPermissionsToSelf();
+                toast('Saved. ' + ((staffList.find((s) => s.id === selectedPermActionUserId) || {}).name || 'User') + ' sees the change on their next page load.', 'success');
             } else {
                 const host = document.getElementById('permissionsHost');
                 const deniedByRole = {};
@@ -7400,19 +7575,13 @@
         const saveBtn = document.getElementById('permsSaveBtn');
         if (saveBtn) saveBtn.addEventListener('click', savePermissions);
 
-        // Tab switching.
-        const byRole = document.getElementById('permsByRole');
-        const byUser = document.getElementById('permsByUser');
+        // Tab switching (Pages/Actions × by role/by user).
         document.querySelectorAll('.perms-tab').forEach((tab) => tab.addEventListener('click', () => {
-            document.querySelectorAll('.perms-tab').forEach((t) => t.classList.remove('is-active'));
-            tab.classList.add('is-active');
             activePermTab = tab.dataset.permTab;
-            if (byRole) byRole.style.display = activePermTab === 'role' ? '' : 'none';
-            if (byUser) byUser.style.display = activePermTab === 'user' ? '' : 'none';
-            if (activePermTab === 'user') populatePermsUserSelect().then(() => renderUserPermissions(selectedPermUserId));
+            renderActivePermTab();
         }));
 
-        // Column "all" toggles for the role matrix.
+        // Column "all" toggles for the Pages role matrix.
         const roleHost = document.getElementById('permissionsHost');
         if (roleHost) roleHost.addEventListener('change', (e) => {
             const colCb = e.target.closest('input[data-perm-col]');
@@ -7420,11 +7589,26 @@
             roleHost.querySelectorAll('input[data-perm-role="' + colCb.dataset.permCol + '"]').forEach((cb) => { cb.checked = colCb.checked; });
         });
 
-        // User picker.
+        // Column "all" toggles for the Actions role matrix.
+        const actionHost = document.getElementById('permActionsHost');
+        if (actionHost) actionHost.addEventListener('change', (e) => {
+            const colCb = e.target.closest('input[data-perm-action-col]');
+            if (!colCb) return;
+            actionHost.querySelectorAll('input[data-perm-action-role="' + colCb.dataset.permActionCol + '"]').forEach((cb) => { cb.checked = colCb.checked; });
+        });
+
+        // Page-visibility user picker.
         const userSel = document.getElementById('permsUserSelect');
         if (userSel) userSel.addEventListener('change', () => {
             selectedPermUserId = userSel.value || '';
             renderUserPermissions(selectedPermUserId);
+        });
+
+        // Action-grant user picker.
+        const actionUserSel = document.getElementById('permsActionUserSelect');
+        if (actionUserSel) actionUserSel.addEventListener('change', () => {
+            selectedPermActionUserId = actionUserSel.value || '';
+            renderActionUserPermissions(selectedPermActionUserId);
         });
     })();
 
