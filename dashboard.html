@@ -559,8 +559,9 @@
             --idc-bone: #F8FAFC;
             width: 320px;
             /* Fixed CR80 proportions — the card must always look like a card.
-               The fields are compact (label + value on one line) so even with
-               every toggle on the full set fits without stretching the box. */
+               The fields stack (label on top, value below) and pack into a
+               2-column grid so even with every toggle on the full set fits
+               without stretching the box. */
             height: 200px;
             border-radius: 14px;
             overflow: hidden;
@@ -757,10 +758,29 @@
             color: var(--idc-accent, #0369A1);
             font-weight: 700;
         }
+        /* The role, name and bottom (Staff ID + QR) must never be squeezed
+           out when many fields are on — keep them rigid so the fields area
+           is what flexes. */
+        .id-card__role,
+        .id-card__name,
+        .id-card__bottom { flex-shrink: 0; }
+        /* Fields pack into a 2-column grid so the full set of stacked
+           label-on-top / value-below rows fits inside the fixed-size card
+           without overflowing or stretching it. Email spans both columns so
+           it can show in full. */
+        .id-card__fields {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            column-gap: 10px;
+            row-gap: 2px;
+            min-width: 0;
+            align-content: start;
+        }
+        .id-card__fields .id-card__field--email { grid-column: 1 / -1; }
         /* Stacked field: tiny caption label on top, value underneath. Kept
-           compact (small fonts, tight line-height, flex-shrink:0) so the full
-           set of toggles still fits inside the fixed-size card without
-           stretching it or collapsing any value. */
+           compact (small fonts, tight line-height) so the full set of toggles
+           still fits inside the fixed-size card without stretching it or
+           collapsing any value. */
         .id-card__field {
             display: flex;
             flex-direction: column;

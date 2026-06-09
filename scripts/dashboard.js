@@ -7019,7 +7019,7 @@
             <div class="id-card__info">
                 ${settings.show_role !== false ? `<div class="id-card__role">${escapeHtml(role)}</div>` : ''}
                 <div class="id-card__name">${escapeHtml(staffRow.name || '—')}</div>
-                ${fields.join('')}
+                <div class="id-card__fields">${fields.join('')}</div>
                 <div class="id-card__bottom">
                     ${settings.show_staff_id !== false ? `<div class="id-card__staff-id"><span class="id-card__staff-id-label">Staff ID</span>${escapeHtml(staffRow.staff_code || '—')}</div>` : '<span></span>'}
                     ${settings.show_qr ? `<div class="id-card__qr">${qrSvg}</div>` : ''}
