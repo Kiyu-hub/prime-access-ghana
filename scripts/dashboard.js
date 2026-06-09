@@ -3065,6 +3065,8 @@
             $('#ptRequesterName').textContent = 'Type your code to confirm your name';
             $('#ptRequesterName').classList.remove('is-ok','is-error');
         }
+        // Director & System Admin don't need to confirm a staff ID.
+        relaxStaffIdGate('ptRequesterCode');
         modal.classList.add('is-open');
         setTimeout(() => $('#ptQty').focus(), 50);
     }
@@ -3181,7 +3183,7 @@
         const method = $('#ptPaymentMethod').value;
         const provider = ($('#ptPaymentProvider') && $('#ptPaymentProvider').value) || null;
         const delivery = $('#ptDeliveryType').value;
-        const code = ($('#ptRequesterCode').value || '').trim().toUpperCase();
+        let code = ($('#ptRequesterCode').value || '').trim().toUpperCase();
         const note = ($('#ptNote').value || '').trim();
         const status = ptCurrentStatus();
         const accountId = ($('#ptAccountSelect') && $('#ptAccountSelect').value) || null;
@@ -3192,7 +3194,7 @@
         const deliveryRecipientPhone = (($('#ptDeliveryRecipientPhone') && $('#ptDeliveryRecipientPhone').value) || '').trim();
         const deliveryAddress        = (($('#ptDeliveryAddress')        && $('#ptDeliveryAddress').value)        || '').trim();
         // Validation (every field required)
-        if (!productId || !qty || qty <= 0 || !fromWh || !method || !delivery || !code) {
+        if (!productId || !qty || qty <= 0 || !fromWh || !method || !delivery || (!code && !isSuperRole())) {
             toast('Please complete every field.', 'error');
             return;
         }
@@ -3216,13 +3218,10 @@
             toast('Pick which account you paid to.', 'error');
             return;
         }
-        // Staff code must match a real staff_code AND match the signed-in user
-        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
-        if (!match) { toast('Staff ID not recognised.', 'error'); return; }
-        if (match.id !== session.id) {
-            toast('Staff ID does not match your signed-in user.', 'error');
-            return;
-        }
+        // Regular staff must confirm a staff ID that matches their signed-in
+        // user; Director & System Admin are exempt (identified by session).
+        code = resolveActionStaffCode(code);
+        if (code === null) return;
         // Max qty check against the dropdown's available stock
         const opt = $('#ptFromWarehouse').selectedOptions[0];
         const maxStock = opt ? Number(opt.dataset.stock) : 0;
@@ -5419,6 +5418,35 @@
         return role === 'admin' || role === 'system_manager';
     }
 
+    /* Director & System Admin are already identified by their signed-in
+       session, so the "Your staff ID" confirmation that regular staff must
+       type to authorise an action (sales, dispatch, transfers) is optional
+       for them. Relaxes the field's `required` flag and hides the "*"
+       required marker on its label. Call from each view's init. */
+    function relaxStaffIdGate(inputId) {
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const sup = isSuperRole();
+        input.required = !sup;
+        const label = document.querySelector('label[for="' + inputId + '"]');
+        const star = label && label.querySelector('.req');
+        if (star) star.style.display = sup ? 'none' : '';
+    }
+
+    /* Resolve the staff-ID confirmation for an action form. Regular staff
+       must type their own staff ID and it must match their signed-in user.
+       Director & System Admin are exempt — the field is optional and we fall
+       back to their own staff_code. Returns the resolved (upper-cased) code,
+       or null if the gate failed (a toast has already been shown). */
+    function resolveActionStaffCode(typed) {
+        const code = (typed || '').trim().toUpperCase();
+        if (isSuperRole()) return code || (session.staff_code || '').toUpperCase();
+        if (!code) { toast('Enter your staff ID.', 'error'); return null; }
+        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
+        if (!match || match.id !== session.id) { toast('Staff ID must match your signed-in user.', 'error'); return null; }
+        return code;
+    }
+
     // Identifies a System Admin staff record. The canonical signal is
     // role === 'system_manager'. We also catch the legacy super account that
     // was seeded as 'admin' but named "System Admin" so it is hidden from the
@@ -5681,6 +5709,8 @@
             PT_INBOX.receiverName.textContent = 'Type your code to confirm your name';
             PT_INBOX.receiverName.classList.remove('is-ok', 'is-error');
         }
+        // Director & System Admin don't need to confirm a staff ID.
+        relaxStaffIdGate('ptReceiverCode');
         // Summary
         const fromWh = t.from_warehouse || {};
         const toBr = t.to_branch || {};
@@ -5734,15 +5764,11 @@
         const t = allTransfersCache.find((x) => x.id === id);
         if (!t) return;
         const qty = parseInt(PT_INBOX.receiveQty.value, 10) || 0;
-        const code = (PT_INBOX.receiverCode.value || '').trim().toUpperCase();
+        let code = (PT_INBOX.receiverCode.value || '').trim().toUpperCase();
         const paymentConfirmed = !!PT_INBOX.receivePayConf.checked;
         if (!qty || qty <= 0 || qty > t.qty_requested) { toast('Enter a quantity between 1 and ' + t.qty_requested + '.', 'error'); return; }
-        if (!code) { toast('Enter your staff ID.', 'error'); return; }
-        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
-        if (!match || match.id !== session.id) {
-            toast('Staff ID must match your signed-in user.', 'error');
-            return;
-        }
+        code = resolveActionStaffCode(code);
+        if (code === null) return;
         try {
             PT_INBOX.receiveSubmit.disabled = true;
             PT_INBOX.receiveSubmit.textContent = 'Confirming…';
@@ -5880,6 +5906,8 @@
             $('#saleStaffName').classList.add('is-ok');
             $('#saleStaffName').classList.remove('is-error');
         }
+        // Director & System Admin don't need to confirm a staff ID.
+        relaxStaffIdGate('saleStaffCode');
         // Load payment accounts for this branch (for the Account dropdown)
         loadSaleAccounts();
     }
@@ -6069,7 +6097,7 @@
         const accountId = ($('#salePaymentAccount').value || null);
         const paymentConfirmed = $('#salePaymentConfirmed').checked;
         const note = $('#saleNote').value.trim();
-        const code = ($('#saleStaffCode').value || '').trim().toUpperCase();
+        let code = ($('#saleStaffCode').value || '').trim().toUpperCase();
         // Build items
         const items = [];
         let hasInvalid = false;
@@ -6102,9 +6130,8 @@
                 return;
             }
         }
-        if (!code) { toast('Enter your staff ID.', 'error'); return; }
-        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
-        if (!match || match.id !== session.id) { toast('Staff ID must match your signed-in user.', 'error'); return; }
+        code = resolveActionStaffCode(code);
+        if (code === null) return;
         try {
             submitBtn.disabled = true;
             submitBtn.querySelector('span').textContent = 'Generating…';
@@ -6401,6 +6428,8 @@
         $('#verifyValidatorCode').value = session.staff_code || '';
         $('#verifyValidatorName').textContent = session.staff_code ? (session.name || '') : 'Type your code to confirm your name';
         $('#verifyValidatorName').className = 'pt-staff-resolve' + (session.staff_code ? ' is-ok' : '');
+        // Director & System Admin don't need to confirm a staff ID.
+        relaxStaffIdGate('verifyValidatorCode');
         $('#verifyResult').innerHTML = '';
         if (!staffList || staffList.length === 0) {
             try { staffList = await window.CH.staff.list(); } catch (_) {}
@@ -6429,15 +6458,11 @@
     const verifyBtn = document.getElementById('verifyInvoiceBtn');
     if (verifyBtn) verifyBtn.addEventListener('click', async () => {
         const code = ($('#verifyInvoiceCode').value || '').trim().toUpperCase();
-        const validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
+        let validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
         const resultHost = $('#verifyResult');
         if (!code) { toast('Enter an invoice code.', 'error'); return; }
-        if (!validatorCode) { toast('Enter your staff ID.', 'error'); return; }
-        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === validatorCode);
-        if (!match || match.id !== session.id) {
-            toast('Staff ID must match your signed-in user.', 'error');
-            return;
-        }
+        validatorCode = resolveActionStaffCode(validatorCode);
+        if (validatorCode === null) return;
         let warehouseId = session.warehouse_id;
         // Super-roles (Director / System Admin) are not tied to a warehouse.
         // Validate against the order's own warehouse when we can find it, but
@@ -6534,7 +6559,8 @@
     async function fulfillOrder(full, code) {
         const orderId = typeof full === 'string' ? full : full.id;
         if (!confirm('Confirm dispatch? Stock will be deducted and this invoice cannot be reused.')) return;
-        const validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
+        let validatorCode = ($('#verifyValidatorCode').value || '').trim().toUpperCase();
+        if (!validatorCode && isSuperRole()) validatorCode = (session.staff_code || '').toUpperCase();
         try {
             await window.CH.customerOrders.fulfill(orderId, session.id, validatorCode);
             try {
