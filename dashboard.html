@@ -3239,8 +3239,46 @@
         @media print {
             body * { visibility: hidden !important; }
             #invoiceDoc, #invoiceDoc * { visibility: visible !important; }
-            #invoiceDoc { position: absolute; left: 0; top: 0; width: 100%; padding: 0; }
             .modal__head, .modal__foot, .modal__close { display: none !important; }
+
+            /* Overlay the invoice at the top-left of the printable A4 area
+               (the @page margin already insets it from the paper edge). */
+            #invoiceDoc {
+                position: absolute;
+                left: 0; top: 0;
+                width: 100%;
+                padding: 0 !important;
+                overflow: visible !important;
+                max-height: none !important;
+            }
+            /* Make the document fill the full printable sheet height so the
+               footer can anchor to the bottom edge instead of floating just
+               under the content. min-height = A4 height (297mm) minus the
+               @page top+bottom margins (8mm each), with a 2mm safety buffer
+               so a full page never spills onto a blank second sheet. */
+            #invoiceDoc .invoice-doc {
+                display: flex;
+                flex-direction: column;
+                box-sizing: border-box;
+                width: 100%;
+                max-width: 100%;
+                min-height: calc(297mm - 18mm);
+            }
+            /* Standard / compact: footer is a direct child — drop it to the
+               bottom of the page. */
+            #invoiceDoc .invoice-doc > .invoice-doc__footer {
+                margin-top: auto !important;
+            }
+            /* Premium: the body wraps the content + footer, so let the body
+               grow to fill and push its footer to the bottom within it. */
+            #invoiceDoc .invoice-doc[data-template="premium"] .invoice-doc__body {
+                flex: 1 1 auto;
+                display: flex;
+                flex-direction: column;
+            }
+            #invoiceDoc .invoice-doc[data-template="premium"] .invoice-doc__footer {
+                margin-top: auto !important;
+            }
         }
 
         /* ---------- DRAFTS bulk-action bar ---------- */
