@@ -88,7 +88,7 @@ export function initMobileNav() {
     });
 }
 
-const SW_RESET_KEY = 'ch_sw_reset_v4';
+const SW_RESET_KEY = 'ch_sw_reset_v5';
 const UPDATE_SNOOZE_KEY = 'ch_update_snooze_until';
 const SNOOZE_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -117,7 +117,13 @@ export function registerSW() {
 
     window.addEventListener('load', async () => {
         try {
-            const reg = await navigator.serviceWorker.register('./scripts/sw.js');
+            // updateViaCache:'none' forces the browser to fetch sw.js AND its
+            // imported version.js from the network (never the HTTP cache) on
+            // every update check. Without this, version.js is served from cache
+            // (the 'imports' default), sw.js stays byte-identical between
+            // releases, and the browser never detects the new version — users
+            // get stuck on an old build until they manually clear storage.
+            const reg = await navigator.serviceWorker.register('./scripts/sw.js', { updateViaCache: 'none' });
 
             // Auto-detect when a new SW becomes available and open the dialog.
             // The page itself NEVER reloads automatically — only when the user
