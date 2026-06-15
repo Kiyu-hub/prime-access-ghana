@@ -1480,6 +1480,11 @@
 
     if (WAREHOUSE_ELS.form) WAREHOUSE_ELS.form.addEventListener('submit', async (e) => {
         e.preventDefault();
+        // Warehouses may only be created/edited by the Director or System Admin.
+        if (!isSuperRole(currentRole())) {
+            toast('Only the Director or System Admin can manage warehouses.', 'error');
+            return;
+        }
         const id = WAREHOUSE_ELS.editId.value;
         const name = WAREHOUSE_ELS.name.value.trim();
         const code = WAREHOUSE_ELS.code.value.trim();
@@ -1775,6 +1780,8 @@
     }
 
     function renderBranches() {
+        // Only the Director / System Admin can add branches.
+        if (els.addBranchBtn) els.addBranchBtn.style.display = isSuperRole(currentRole()) ? '' : 'none';
         if (branches.length === 0) {
             els.branchesBody.innerHTML = '';
             els.branchesEmpty.style.display = 'block';
@@ -1835,7 +1842,6 @@
         els.branchModalTitle.textContent = 'Add Branch';
         els.branchEditId.value = '';
         els.branchForm.reset();
-        populateBranchManagerSelect();
         els.branchModal.classList.add('is-open');
         setTimeout(() => els.branchName.focus(), 50);
     }
@@ -1847,19 +1853,20 @@
         els.branchEditId.value = id;
         els.branchName.value = b.name || '';
         els.branchLocation.value = b.location || '';
-        populateBranchManagerSelect();
-        const mgrSel = document.getElementById('branchManager');
-        if (mgrSel) mgrSel.value = b.manager_staff_id || '';
         els.branchModal.classList.add('is-open');
     }
 
     els.branchForm.addEventListener('submit', async (e) => {
         e.preventDefault();
+        // Branches (showrooms) may only be created/edited by the Director or System Admin.
+        if (!isSuperRole(currentRole())) {
+            toast('Only the Director or System Admin can manage branches.', 'error');
+            return;
+        }
         const id = els.branchEditId.value;
         const name = els.branchName.value.trim();
         const location = els.branchLocation.value.trim();
-        const mgrSel = document.getElementById('branchManager');
-        const manager_staff_id = (mgrSel && mgrSel.value) || null;
+        const manager_staff_id = null; // managers are assigned later from Staff
         if (!name) { toast('Branch name is required.', 'error'); return; }
         try {
             if (id) {
