@@ -5456,13 +5456,17 @@
                         <p>Showrooms and warehouses across the network.</p>
                     </div>
                     <div class="topbar__actions">
-                        <button class="btn" id="addWarehouseFromBranchBtn">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"></path><path d="M3 21h18"></path><rect x="9" y="13" width="6" height="8"></rect></svg>
-                            <span>Add Warehouse</span>
-                        </button>
                         <button class="btn btn--primary" id="addBranchBtn">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                            <span>Create Branch</span>
+                        </button>
+                        <button class="btn" id="addShowroomBtn" title="Needs a branch first">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"></path><path d="M5 10v10h14V10"></path><rect x="9" y="14" width="6" height="6"></rect></svg>
                             <span>Add Showroom</span>
+                        </button>
+                        <button class="btn" id="addWarehouseFromBranchBtn" title="Needs a branch first">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"></path><path d="M3 21h18"></path><rect x="9" y="13" width="6" height="8"></rect></svg>
+                            <span>Add Warehouse</span>
                         </button>
                     </div>
                 </div>
@@ -5489,7 +5493,32 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
                         </div>
                         <h3>No branches yet</h3>
-                        <p>Add a branch so you can assign staff and products to it.</p>
+                        <p>Create a branch first — showrooms and warehouses are added under a branch.</p>
+                    </div>
+                </div>
+
+                <h2 style="margin:28px 0 12px;font-size:1.05rem;">Showrooms</h2>
+                <div class="table-wrap">
+                    <div class="table-scroll">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Branch</th>
+                                    <th>Location</th>
+                                    <th>Created</th>
+                                    <th style="text-align: right;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="showroomsBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="empty" id="showroomsEmpty" style="display:none;">
+                        <div class="empty__icon">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"></path><path d="M5 10v10h14V10"></path></svg>
+                        </div>
+                        <h3>No showrooms yet</h3>
+                        <p>Add a showroom under a branch.</p>
                     </div>
                 </div>
             </section>
@@ -6087,8 +6116,8 @@
         <div class="modal__dialog">
             <header class="modal__head">
                 <div>
-                    <h3 id="branchModalTitle">Add Showroom</h3>
-                    <p>A showroom is a sales branch — staff are assigned to one.</p>
+                    <h3 id="branchModalTitle">Create Branch</h3>
+                    <p>A branch is the parent location. Showrooms and warehouses are created under it.</p>
                 </div>
                 <button class="modal__close" data-close="branchModal" aria-label="Close">
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -6098,8 +6127,8 @@
                 <div class="modal__body">
                     <input type="hidden" id="branchEditId" />
                     <div class="field--full">
-                        <label for="branchName">Showroom name<span class="req">*</span></label>
-                        <input type="text" id="branchName" placeholder="e.g. East Legon Showroom" required />
+                        <label for="branchName">Branch name<span class="req">*</span></label>
+                        <input type="text" id="branchName" placeholder="e.g. Accra Main" required />
                     </div>
                     <div class="field--full">
                         <label for="branchLocation">Location <span class="hint">(optional)</span></label>
@@ -6109,6 +6138,44 @@
                 <footer class="modal__foot">
                     <button type="button" class="btn" data-close="branchModal">Cancel</button>
                     <button type="submit" class="btn btn--primary">Save Branch</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================== -->
+    <!--         SHOWROOM MODAL         -->
+    <!-- ============================== -->
+    <div class="modal modal--sm" id="showroomModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3 id="showroomModalTitle">Add Showroom</h3>
+                    <p>A showroom belongs to a branch.</p>
+                </div>
+                <button class="modal__close" data-close="showroomModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="showroomForm">
+                <div class="modal__body">
+                    <input type="hidden" id="showroomEditId" />
+                    <div class="field--full">
+                        <label for="showroomBranch">Branch<span class="req">*</span></label>
+                        <select id="showroomBranch" required></select>
+                    </div>
+                    <div class="field--full">
+                        <label for="showroomName">Showroom name<span class="req">*</span></label>
+                        <input type="text" id="showroomName" placeholder="e.g. East Legon Showroom" required />
+                    </div>
+                    <div class="field--full">
+                        <label for="showroomLocation">Location <span class="hint">(optional)</span></label>
+                        <input type="text" id="showroomLocation" placeholder="e.g. Accra, Ghana" />
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="showroomModal">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Save Showroom</button>
                 </footer>
             </form>
         </div>

@@ -115,6 +115,32 @@
         },
     };
 
+    /* ---- showrooms (child of a branch) ----------------------- */
+    const showrooms = {
+        async list() {
+            const { data, error } = await client.from('showrooms')
+                .select('*, branch:branch_id(name)')
+                .order('name');
+            if (error) throw error;
+            return data || [];
+        },
+        async create({ name, branch_id, location }) {
+            const { data, error } = await client.from('showrooms')
+                .insert({ name, branch_id, location: location || null })
+                .select().single();
+            if (error) throw error;
+            return data;
+        },
+        async update(id, patch) {
+            const { error } = await client.from('showrooms').update(patch).eq('id', id);
+            if (error) throw error;
+        },
+        async remove(id) {
+            const { error } = await client.from('showrooms').delete().eq('id', id);
+            if (error) throw error;
+        },
+    };
+
     /* ---- staff ----------------------------------------------- */
     const staff = {
         async list() {
@@ -1038,6 +1064,7 @@
         signOut,
         requireSession,
         branches,
+        showrooms,
         staff,
         products,
         messages,

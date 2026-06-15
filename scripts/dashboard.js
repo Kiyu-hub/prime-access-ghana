@@ -1492,6 +1492,10 @@
             branch_id: cb.dataset.whLinkBranch,
             is_default: cb.dataset.whLinkBranch === defaultBranchId,
         }));
+        if (branch_links.length === 0) {
+            toast('A warehouse must belong to at least one branch — tick a branch.', 'error');
+            return;
+        }
         try {
             if (id) {
                 await window.CH.warehouses.update(id, {
@@ -1761,6 +1765,7 @@
     async function loadBranches() {
         try {
             branches = await window.CH.branches.list();
+            try { showroomsCache = await window.CH.showrooms.list(); } catch (_) { showroomsCache = []; }
             renderBranches();
             populateBranchSelect();
         } catch (e) {
@@ -1769,13 +1774,31 @@
         }
     }
 
+    function setBtnLocked(btn, locked) {
+        if (!btn) return;
+        btn.disabled = !!locked;
+        btn.style.filter = locked ? 'blur(1.2px)' : '';
+        btn.style.opacity = locked ? '0.5' : '';
+        btn.style.pointerEvents = locked ? 'none' : '';
+        if (locked) btn.title = 'Create a branch first';
+    }
+
     function renderBranches() {
-        // Only the Director / System Admin can add showrooms or warehouses.
+        // Only the Director / System Admin can create branches/showrooms/warehouses.
         const _canManage = isSuperRole(currentRole());
-        if (els.addBranchBtn) els.addBranchBtn.style.display = _canManage ? '' : 'none';
+        const _hasBranch = branches.length > 0;
+        const _addShowroomBtn = document.getElementById('addShowroomBtn');
         const _addWhBtn = document.getElementById('addWarehouseFromBranchBtn');
+        if (els.addBranchBtn) els.addBranchBtn.style.display = _canManage ? '' : 'none';
+        if (_addShowroomBtn) _addShowroomBtn.style.display = _canManage ? '' : 'none';
         if (_addWhBtn) _addWhBtn.style.display = _canManage ? '' : 'none';
-        if (branches.length === 0) {
+        // Non-negotiable: showrooms & warehouses can't exist without a branch.
+        setBtnLocked(_addShowroomBtn, !_hasBranch);
+        setBtnLocked(_addWhBtn, !_hasBranch);
+
+        renderShowrooms();
+
+        if (!_hasBranch) {
             els.branchesBody.innerHTML = '';
             els.branchesEmpty.style.display = 'block';
             return;
@@ -1832,11 +1855,135 @@
     els.addBranchBtn.addEventListener('click', () => openBranchAdd());
     {
         const addWhFromBranch = document.getElementById('addWarehouseFromBranchBtn');
-        if (addWhFromBranch) addWhFromBranch.addEventListener('click', () => openWarehouseAdd());
+        if (addWhFromBranch) addWhFromBranch.addEventListener('click', () => {
+            if (branches.length === 0) { toast('Create a branch first.', 'error'); return; }
+            openWarehouseAdd();
+        });
     }
 
+    /* ---- Showrooms (child of a branch) ---- */
+    let showroomsCache = [];
+    const showroomEls = {
+        modal:    document.getElementById('showroomModal'),
+        title:    document.getElementById('showroomModalTitle'),
+        form:     document.getElementById('showroomForm'),
+        editId:   document.getElementById('showroomEditId'),
+        branch:   document.getElementById('showroomBranch'),
+        name:     document.getElementById('showroomName'),
+        location: document.getElementById('showroomLocation'),
+        body:     document.getElementById('showroomsBody'),
+        empty:    document.getElementById('showroomsEmpty'),
+    };
+
+    async function loadShowrooms() {
+        try { showroomsCache = await window.CH.showrooms.list(); }
+        catch (e) { console.warn('loadShowrooms failed', e); showroomsCache = []; }
+        renderShowrooms();
+    }
+
+    function renderShowrooms() {
+        if (!showroomEls.body) return;
+        if (!showroomsCache.length) {
+            showroomEls.body.innerHTML = '';
+            if (showroomEls.empty) showroomEls.empty.style.display = 'block';
+            return;
+        }
+        if (showroomEls.empty) showroomEls.empty.style.display = 'none';
+        const canManage = isSuperRole(currentRole());
+        showroomEls.body.innerHTML = showroomsCache.map((s) => `
+            <tr>
+                <td><strong style="color:var(--c-ink-2);">${escapeHtml(s.name)}</strong></td>
+                <td>${escapeHtml((s.branch && s.branch.name) || '—')}</td>
+                <td>${escapeHtml(s.location || '—')}</td>
+                <td>${s.created_at ? new Date(s.created_at).toLocaleDateString() : '—'}</td>
+                <td>
+                    <div class="row-actions">
+                        ${canManage ? `<button class="icon-btn" data-edit-showroom="${s.id}" title="Edit" aria-label="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button class="icon-btn icon-btn--danger" data-del-showroom="${s.id}" title="Delete" aria-label="Delete"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"></path></svg></button>` : '<span style="color:var(--c-ink-5);">—</span>'}
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function populateShowroomBranchSelect(selectedId) {
+        if (!showroomEls.branch) return;
+        showroomEls.branch.innerHTML = ['<option value="" disabled ' + (selectedId ? '' : 'selected') + '>Select branch</option>']
+            .concat(branches.map((b) => `<option value="${b.id}" ${b.id === selectedId ? 'selected' : ''}>${escapeHtml(b.name)}</option>`))
+            .join('');
+    }
+
+    function openShowroomAdd() {
+        if (branches.length === 0) { toast('Create a branch first.', 'error'); return; }
+        showroomEls.title.textContent = 'Add Showroom';
+        showroomEls.editId.value = '';
+        showroomEls.form.reset();
+        populateShowroomBranchSelect(branches.length === 1 ? branches[0].id : '');
+        showroomEls.modal.classList.add('is-open');
+        setTimeout(() => showroomEls.name.focus(), 50);
+    }
+
+    function openShowroomEdit(id) {
+        const s = showroomsCache.find((x) => x.id === id);
+        if (!s) return;
+        showroomEls.title.textContent = 'Edit Showroom';
+        showroomEls.editId.value = id;
+        populateShowroomBranchSelect(s.branch_id);
+        showroomEls.name.value = s.name || '';
+        showroomEls.location.value = s.location || '';
+        showroomEls.modal.classList.add('is-open');
+    }
+
+    async function deleteShowroom(id) {
+        const s = showroomsCache.find((x) => x.id === id);
+        if (!s) return;
+        if (!confirm(`Delete showroom "${s.name}"?`)) return;
+        try {
+            await window.CH.showrooms.remove(id);
+            toast('Showroom deleted.', 'success');
+            await loadShowrooms();
+        } catch (err) {
+            console.error(err);
+            toast('Could not delete showroom: ' + (err.message || 'unknown error'), 'error');
+        }
+    }
+
+    if (showroomEls.body) showroomEls.body.addEventListener('click', (e) => {
+        const ed = e.target.closest('[data-edit-showroom]');
+        if (ed) { openShowroomEdit(ed.dataset.editShowroom); return; }
+        const del = e.target.closest('[data-del-showroom]');
+        if (del) { deleteShowroom(del.dataset.delShowroom); }
+    });
+    {
+        const addShowroomBtn = document.getElementById('addShowroomBtn');
+        if (addShowroomBtn) addShowroomBtn.addEventListener('click', () => openShowroomAdd());
+    }
+    if (showroomEls.form) showroomEls.form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!isSuperRole(currentRole())) { toast('Only the Director or System Admin can manage showrooms.', 'error'); return; }
+        const id = showroomEls.editId.value;
+        const branch_id = showroomEls.branch.value;
+        const name = showroomEls.name.value.trim();
+        const location = showroomEls.location.value.trim();
+        if (!branch_id) { toast('Pick a branch.', 'error'); return; }
+        if (!name) { toast('Showroom name is required.', 'error'); return; }
+        try {
+            if (id) {
+                await window.CH.showrooms.update(id, { name, branch_id, location: location || null });
+                toast('Showroom updated.', 'success');
+            } else {
+                await window.CH.showrooms.create({ name, branch_id, location });
+                toast('Showroom added.', 'success');
+            }
+            showroomEls.modal.classList.remove('is-open');
+            await loadShowrooms();
+        } catch (err) {
+            console.error(err);
+            toast('Could not save showroom: ' + (err.message || 'unknown error'), 'error');
+        }
+    });
+
     function openBranchAdd() {
-        els.branchModalTitle.textContent = 'Add Showroom';
+        els.branchModalTitle.textContent = 'Create Branch';
         els.branchEditId.value = '';
         els.branchForm.reset();
         els.branchModal.classList.add('is-open');
@@ -1846,7 +1993,7 @@
     function openBranchEdit(id) {
         const b = branches.find((x) => x.id === id);
         if (!b) return;
-        els.branchModalTitle.textContent = 'Edit Showroom';
+        els.branchModalTitle.textContent = 'Edit Branch';
         els.branchEditId.value = id;
         els.branchName.value = b.name || '';
         els.branchLocation.value = b.location || '';
