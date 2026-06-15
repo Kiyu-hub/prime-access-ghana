@@ -282,12 +282,13 @@
             if (!window.CH || !window.CH.supabase || !session.id) return;
             const { data, error } = await window.CH.supabase
                 .from('staff_view')
-                .select('image_url, started_at, warehouse_id, warehouse_name')
+                .select('image_url, started_at, warehouse_id, warehouse_name, staff_code')
                 .eq('id', session.id)
                 .maybeSingle();
             if (error || !data) return;
             session.image_url = data.image_url || null;
             session.started_at = data.started_at || null;
+            if (data.staff_code) session.staff_code = data.staff_code;
             if (data.warehouse_id) session.warehouse_id = data.warehouse_id;
             if (data.warehouse_name) session.warehouse_name = data.warehouse_name;
             try { localStorage.setItem('ch_session', JSON.stringify(session)); } catch (_) {}
@@ -1430,10 +1431,21 @@
         });
     }
 
+    // Auto-generate the next warehouse code (WH-001, WH-002, …) — no manual entry.
+    function genWarehouseCode() {
+        let max = 0;
+        (warehousesCache || []).forEach((w) => {
+            const m = /^WH-(\d+)$/.exec(String(w.code || '').toUpperCase());
+            if (m) max = Math.max(max, parseInt(m[1], 10));
+        });
+        return 'WH-' + String(max + 1).padStart(3, '0');
+    }
+
     function openWarehouseAdd() {
         WAREHOUSE_ELS.title.textContent = 'Add Warehouse';
         WAREHOUSE_ELS.editId.value = '';
         WAREHOUSE_ELS.form.reset();
+        if (WAREHOUSE_ELS.code) WAREHOUSE_ELS.code.value = genWarehouseCode();
         renderWarehouseBranchLinks(null);
         WAREHOUSE_ELS.modal.classList.add('is-open');
         setTimeout(() => WAREHOUSE_ELS.name.focus(), 40);
@@ -5413,32 +5425,38 @@
         return role === 'admin' || role === 'system_manager';
     }
 
-    /* Director & System Admin are already identified by their signed-in
-       session, so the "Your staff ID" confirmation that regular staff must
-       type to authorise an action (sales, dispatch, transfers) is optional
-       for them. Relaxes the field's `required` flag and hides the "*"
-       required marker on its label. Call from each view's init. */
+    /* The staff ID of the signed-in user — never typed manually anymore.
+       Prefer the session (set at login), fall back to the staff list. */
+    function currentUserStaffCode() {
+        if (session && session.staff_code) return String(session.staff_code).toUpperCase();
+        const me = (staffList || []).find((s) => s.id === (session && session.id));
+        return ((me && me.staff_code) || '').toUpperCase();
+    }
+
+    /* Staff-ID action fields (sales, dispatch, transfers, verification) are
+       AUTO-FILLED from the authenticated user and locked — no manual entry.
+       Fills the input with the signed-in user's staff ID, makes it read-only,
+       drops the required marker, and notifies dependent listeners. */
     function relaxStaffIdGate(inputId) {
         const input = document.getElementById(inputId);
         if (!input) return;
-        const sup = isSuperRole();
-        input.required = !sup;
+        const code = currentUserStaffCode();
+        if (code) input.value = code;
+        input.readOnly = true;
+        input.required = false;
+        input.setAttribute('title', 'Auto-filled from your account');
         const label = document.querySelector('label[for="' + inputId + '"]');
         const star = label && label.querySelector('.req');
-        if (star) star.style.display = sup ? 'none' : '';
+        if (star) star.style.display = 'none';
+        try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
     }
 
-    /* Resolve the staff-ID confirmation for an action form. Regular staff
-       must type their own staff ID and it must match their signed-in user.
-       Director & System Admin are exempt — the field is optional and we fall
-       back to their own staff_code. Returns the resolved (upper-cased) code,
-       or null if the gate failed (a toast has already been shown). */
-    function resolveActionStaffCode(typed) {
-        const code = (typed || '').trim().toUpperCase();
-        if (isSuperRole()) return code || (session.staff_code || '').toUpperCase();
-        if (!code) { toast('Enter your staff ID.', 'error'); return null; }
-        const match = (staffList || []).find((s) => (s.staff_code || '').toUpperCase() === code);
-        if (!match || match.id !== session.id) { toast('Staff ID must match your signed-in user.', 'error'); return null; }
+    /* Resolve the staff-ID for an action form. Always the authenticated
+       user's own code — the typed value (if any) is ignored. Returns the
+       upper-cased code, or null if the user has no staff ID yet. */
+    function resolveActionStaffCode() {
+        const code = currentUserStaffCode();
+        if (!code) { toast('Your staff ID has not been generated yet. Ask the System Admin.', 'error'); return null; }
         return code;
     }
 
