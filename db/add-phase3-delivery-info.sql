@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 3 add-on: transfer delivery info
+-- Prime Access Ghana — Phase 3 add-on: transfer delivery info
 -- Adds external-delivery details to product_transfer_requests
 -- and extends the request RPC to accept them.
 -- Safe to re-run.

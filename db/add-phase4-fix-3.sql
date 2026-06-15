@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 4 fix-pack #3
+-- Prime Access Ghana — Phase 4 fix-pack #3
 --   * Switch feature_flags.director_id_card_template -> a CSV
 --     of multiple templates (default 'classic').
 --   * Backfill the new column from the old single value so

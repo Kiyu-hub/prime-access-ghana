@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Supabase schema
+-- Prime Access Ghana — Supabase schema
 -- Run this once in the Supabase SQL editor (Dashboard → SQL → New query).
 -- Safe to re-run: every statement is idempotent.
 -- ============================================================
@@ -40,6 +40,7 @@ create index if not exists staff_email_idx on public.staff(lower(email));
 create table if not exists public.products (
     id              uuid primary key default gen_random_uuid(),
     item_no         text not null,
+    name            text,
     description     text not null,
     category        text,
     material        text,
@@ -264,8 +265,8 @@ grant select on public.staff_view to anon, authenticated;
 -- ------------------------------------------------------------
 -- SEED: first branch + director account
 -- Default director credentials (CHANGE THESE FROM THE UI AFTER FIRST LOGIN):
---   email:    Director@clasikalhomes.com
---   password: clasikal@2026
+--   email:    director@primeaccessgh.com
+--   password: prime@2026
 -- ------------------------------------------------------------
 insert into public.branches (name, location)
 values ('Head Office', 'Accra')
@@ -273,17 +274,17 @@ on conflict (name) do nothing;
 
 insert into public.staff (email, password_hash, name, role, branch_id, is_admin)
 select
-    'director@clasikalhomes.com',
-    crypt('clasikal@2026', gen_salt('bf', 10)),
+    'director@primeaccessgh.com',
+    crypt('prime@2026', gen_salt('bf', 10)),
     'Director',
     'Admin',
     (select id from public.branches where name = 'Head Office'),
     true
 where not exists (
-    select 1 from public.staff where lower(email) = 'director@clasikalhomes.com'
+    select 1 from public.staff where lower(email) = 'director@primeaccessgh.com'
 );
 
 -- Done. After running:
 -- 1. Confirm tables exist: select count(*) from staff, branches, products;
--- 2. Test login from psql: select * from verify_login('director@clasikalhomes.com', 'clasikal@2026');
+-- 2. Test login from psql: select * from verify_login('director@primeaccessgh.com', 'prime@2026');
 -- 3. Sign in at index.html.

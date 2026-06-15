@@ -1,8 +1,8 @@
 {
-    "name": "Clasikal Homes — Staff Portal",
-    "short_name": "Clasikal Homes",
-    "description": "Inventory and staff portal for Clasikal Homes — Ghana.",
-    "id": "/clasikal-homes/",
+    "name": "Prime Access Ghana — Staff Portal",
+    "short_name": "Prime Access",
+    "description": "Inventory and staff portal for Prime Access Ghana.",
+    "id": "/prime-access-ghana/",
     "start_url": "./index.html",
     "scope": "./",
     "display": "standalone",

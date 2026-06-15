@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Shared UI polish layer
+   Prime Access Ghana — Shared UI polish layer
    initReveal, initCursor, initMobileNav, registerSW
    Loaded as a module from index.html and dashboard.html.
    ============================================================ */

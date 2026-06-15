@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 4 fix-pack
+-- Prime Access Ghana — Phase 4 fix-pack
 --   * Rename `mode` -> `env` everywhere. `mode` clashes with the
 --     built-in Postgres aggregate `mode()`, which triggered the
 --     "WITHIN GROUP is required for ordered-set aggregate mode"

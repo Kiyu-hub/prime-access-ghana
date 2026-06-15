@@ -1,6 +1,6 @@
-# Clasikal Homes — Inventory & Sales Portal
+# Prime Access Ghana — Inventory & Sales Portal
 
-A modern, multi-branch inventory & sales platform built for Clasikal Homes (Ghana). It runs in any browser, installs as a PWA on phones and laptops, and is operated end-to-end from a single dashboard.
+A modern, multi-branch inventory & sales platform built for Prime Access Ghana (Ghana). It runs in any browser, installs as a PWA on phones and laptops, and is operated end-to-end from a single dashboard.
 
 ---
 
@@ -147,8 +147,8 @@ See **`SETUP.md`** for the click-by-click walkthrough. Headlines:
 Default Director login (change immediately):
 
 ```
-email:    director@clasikalhomes.com
-password: clasikal@2026
+email:    director@primeaccessgh.com
+password: prime@2026
 ```
 
 ---
@@ -208,6 +208,6 @@ A version bump is just editing `scripts/version.js`. The service worker uses tha
 
 ## License & credits
 
-Internal project for Clasikal Homes — not open-source. Contact the Director for licensing questions.
+Internal project for Prime Access Ghana — not open-source. Contact the Director for licensing questions.
 
-Built with vanilla web + Supabase + Cloudinary. Logo and brand assets © Clasikal Homes.
+Built with vanilla web + Supabase + Cloudinary. Logo and brand assets © Prime Access Ghana.

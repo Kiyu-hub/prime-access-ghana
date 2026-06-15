@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Login form handler
+   Prime Access Ghana — Login form handler
    Validates inputs, calls CH.signIn (Supabase RPC verify_login),
    persists session in localStorage, redirects to dashboard.
    ============================================================ */

@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Dashboard logic
+   Prime Access Ghana — Dashboard logic
    • Products: Supabase-backed CRUD, branch-filtered for non-admin
    • Images:   uploaded to Cloudinary, secure_url stored in image_url
    • Branches: admin CRUD
@@ -494,7 +494,7 @@
             <tr${p.is_draft ? ' class="row--draft"' : ''} data-product-id="${p.id}" style="cursor: pointer;">
                 <td>${thumb}</td>
                 <td><span class="itemno">${p.item_no ? escapeHtml(p.item_no) : '<span style="color:var(--c-ink-5);">—</span>'}</span> ${draftBadge}</td>
-                <td style="max-width:280px;">${escapeHtml(p.description || '')}</td>
+                <td style="max-width:280px;">${p.name ? '<strong>' + escapeHtml(p.name) + '</strong><br>' : ''}${escapeHtml(p.description || '')}</td>
                 <td>${p.category ? '<span class="pill">' + escapeHtml(p.category) + '</span>' : '—'}</td>
                 <td>${escapeHtml(p.material || '—')}</td>
                 <td>${escapeHtml(p.color || '—')}</td>
@@ -610,6 +610,7 @@
         els.modalTitle.textContent = 'Edit Product · ' + (p.item_no || p.description || '');
         els.editId.value = id;
         populateProductFormDropdowns();
+        $('#prodName').value = p.name || '';
         $('#itemNo').value = p.item_no || '';
         $('#category').value = p.category || '';
         $('#description').value = p.description || '';
@@ -722,6 +723,7 @@
 
         const data = {
             id: editId || '',
+            name: $('#prodName').value.trim() || null,
             item_no: $('#itemNo').value.trim().toUpperCase() || null,
             category: $('#category').value,
             description: $('#description').value.trim(),
@@ -862,7 +864,7 @@
 
         // Row 1: Title (merged across)
         ws['A1'] = {
-            v: 'CLASIKAL HOMES — INVENTORY',
+            v: 'PRIME ACCESS GHANA — INVENTORY',
             t: 's',
             s: {
                 font: { bold: true, sz: 18, color: { rgb: 'FFFFFF' }, name: 'Calibri' },
@@ -944,7 +946,7 @@
         // Footer row (contact info)
         const footerRow = headerRow + dataRows.length + 2;
         ws[XLSX.utils.encode_cell({ r: footerRow - 1, c: 0 })] = {
-            v: 'East Legon Hills, Accra · clasikalhomesgh@gmail.com · 054 619 1433 / 050 051 5050',
+            v: 'Accra · Ghana · primeaccessgh@gmail.com · 054 417 4341 / 059 942 8820 · @primeacessgh',
             t: 's',
             s: {
                 font: { italic: true, sz: 9, color: { rgb: '64748B' }, name: 'Calibri' },
@@ -991,7 +993,7 @@
 
         const stamp = new Date().toISOString().slice(0, 10);
         const branchSlug = (session.branch_name || 'all').replace(/\s+/g, '-');
-        const fname = `Clasikal-Homes_${branchSlug}_${stamp}.xlsx`;
+        const fname = `Prime-Access-Ghana_${branchSlug}_${stamp}.xlsx`;
         XLSX.writeFile(wb, fname, { compression: true });
         toast('Exported ' + products.length + ' products to ' + fname, 'success');
     });
@@ -2400,6 +2402,7 @@
                 </div>
                 <div class="prod-card__body">
                     <div class="prod-card__itemno">${escapeHtml(p.item_no || '')}</div>
+                    ${p.name ? '<div class="prod-card__name" style="font-weight:700;color:var(--c-ink);font-size:0.9rem;margin-bottom:2px;">' + escapeHtml(p.name) + '</div>' : ''}
                     <h3 class="prod-card__title">${escapeHtml(p.description || '')}</h3>
                     <div class="prod-card__meta">
                         ${p.category ? '<span class="pill">' + escapeHtml(p.category) + '</span>' : ''}
@@ -2533,7 +2536,7 @@
             if (lvlFilter === 'low' && !(stock > 0 && stock <= LOW_STOCK_THRESHOLD)) return false;
             if (lvlFilter === 'out' && stock !== 0) return false;
             if (q) {
-                const hay = [p.item_no, p.description, p.material, p.color, p.supplier, p.category]
+                const hay = [p.name, p.item_no, p.description, p.material, p.color, p.supplier, p.category]
                     .filter(Boolean).join(' ').toLowerCase();
                 if (!hay.includes(q)) return false;
             }
@@ -4619,7 +4622,7 @@
 
         if ('Notification' in window && Notification.permission === 'granted') {
             try {
-                new Notification('Clasikal Homes — ' + title, { body: sub, icon: 'assets/logo.png', tag: 'ch-stock-alert' });
+                new Notification('Prime Access Ghana — ' + title, { body: sub, icon: 'assets/logo.png', tag: 'ch-stock-alert' });
             } catch (_) {}
         }
     }
@@ -6193,8 +6196,8 @@
             <div class="invoice-doc__head">
                 <div class="invoice-doc__brand">
                     <img src="assets/icon-180.png" alt="" />
-                    <strong>CLASIKAL HOMES</strong>
-                    <small>we listen, we create, you enjoy</small>
+                    <strong>PRIME ACCESS GHANA</strong>
+                    <small>@primeacessgh</small>
                 </div>
                 <div class="invoice-doc__meta">
                     <b>${escapeHtml(full.invoice_code)}</b><br>
@@ -6229,8 +6232,8 @@
         const footer = `
             <div class="invoice-doc__footer">
                 Thank you for your purchase.<br>
-                <i>we listen, we create, you enjoy</i><br>
-                East Legon Hills · Accra · 054 619 1433 / 050 051 5050 · clasikalhomesgh@gmail.com
+                <i>@primeacessgh</i><br>
+                Accra · 054 417 4341 / 059 942 8820 · primeaccessgh@gmail.com
             </div>`;
         // Premium wraps everything after the head in an .invoice-doc__body
         // so the navy banner can sit flush. Compact uses the same layout
@@ -7007,10 +7010,10 @@
         const useLogo = settings.template === 'heritage' || settings.template === 'bold';
         const brandHtml = useLogo
             ? `<div class="id-card__brand-row">
-                   <div class="id-card__logo"><img src="assets/logo.png?v=4" alt="" /></div>
-                   <div class="id-card__brand">CLASIKAL HOMES</div>
+                   <div class="id-card__logo"><img src="assets/logo-dark.png?v=1" alt="" /></div>
+                   <div class="id-card__brand">PRIME ACCESS GHANA</div>
                </div>`
-            : `<div class="id-card__brand">CLASIKAL HOMES</div>`;
+            : `<div class="id-card__brand">PRIME ACCESS GHANA</div>`;
         return `<div class="id-card" data-template="${settings.template}" style="--idc-accent:${escapeAttr(acc)};">
             <div class="id-card__photo-col">
                 <div class="id-card__photo">${photoInner}</div>
@@ -7058,7 +7061,7 @@
         const subject = picked || list.find((s) => s.staff_code) || list[0] || {
             id: 'preview',
             name: 'Ama Yeboah',
-            email: 'ama@clasikalhomes.com',
+            email: 'ama@primeaccessgh.com',
             role: 'staff',
             staff_code: 'CH-A-007',
             started_at: '2025-08-01',
@@ -7221,7 +7224,7 @@
             if (!win) { toast('Pop-up blocked — allow pop-ups to print.', 'error'); return; }
             const css = document.querySelectorAll('style');
             const styleText = Array.from(css).map((s) => s.textContent).join('\n');
-            win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Clasikal Homes — Staff ID Cards</title><style>${styleText}\n.print-sheet{display:flex;flex-wrap:wrap;gap:16px;padding:16px;background:#f5f5f5;}@page{size:auto;margin:8mm;}@media print{.print-sheet{background:#fff;padding:0;}}</style></head><body><div class="print-sheet">${cards}</div><script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
+            win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Prime Access Ghana — Staff ID Cards</title><style>${styleText}\n.print-sheet{display:flex;flex-wrap:wrap;gap:16px;padding:16px;background:#f5f5f5;}@page{size:auto;margin:8mm;}@media print{.print-sheet{background:#fff;padding:0;}}</style></head><body><div class="print-sheet">${cards}</div><script>setTimeout(()=>window.print(),300);<\/script></body></html>`);
             win.document.close();
         });
     }

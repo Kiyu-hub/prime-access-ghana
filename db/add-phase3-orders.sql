@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 3: Customer Orders / Invoices / POS
+-- Prime Access Ghana — Phase 3: Customer Orders / Invoices / POS
 -- Showroom staff initiates an order, prints a branded invoice with
 -- a single-use code. Warehouse manager validates the code and (on
 -- pass) atomically dispatches the goods, decrementing stock.

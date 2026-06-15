@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 4 fix-pack #2
+-- Prime Access Ghana — Phase 4 fix-pack #2
 --   * Fix "column reference 'id' is ambiguous" on New Sale.
 --     The create_customer_order RPC declared an OUT column named
 --     `id` (in RETURNS TABLE) AND referenced customer_orders.id in

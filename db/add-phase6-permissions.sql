@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 6: Role permissions (page access)
+-- Prime Access Ghana — Phase 6: Role permissions (page access)
 -- The System Admin can tick / untick which pages each role may use,
 -- including the Director. Stored as a per-role list of DENIED views;
 -- empty list = that role keeps its full default access.

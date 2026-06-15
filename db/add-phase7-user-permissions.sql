@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 7: Per-user page permissions
+-- Prime Access Ghana — Phase 7: Per-user page permissions
 -- Adds a "By user" layer on top of the per-role permissions.
 -- The System Admin can hide specific pages for one individual user.
 -- Stored as a per-user list of DENIED views; empty = no extra limits.

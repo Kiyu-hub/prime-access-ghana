@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Cloudinary unsigned uploads
+   Prime Access Ghana — Cloudinary unsigned uploads
    Uses ONLY cloud_name + unsigned upload preset from config.js.
    API secret is NEVER used in client code.
    ============================================================ */

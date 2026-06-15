@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Service Worker
+   Prime Access Ghana — Service Worker
    Cache-first for the app shell (HTML/CSS/JS/images/fonts).
    Network-first for Supabase + Cloudinary (with offline fallback to cache where possible).
    Skips non-GET requests entirely.
@@ -16,6 +16,7 @@ const SHELL = [
     './dashboard.html',
     './manifest.webmanifest',
     './assets/logo.png',
+    './assets/logo-dark.png',
     './assets/icon-180.png',
     './assets/icon-192.png',
     './assets/icon-384.png',

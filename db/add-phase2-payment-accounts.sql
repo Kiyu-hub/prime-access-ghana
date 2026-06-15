@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 2: Payment Accounts
+-- Prime Access Ghana — Phase 2: Payment Accounts
 -- Multi-method payment destinations (bank, momo, pos, cash) the
 -- Director can register and assign to branches. Used in the
 -- product-transfer Request modal so a requester picks the account

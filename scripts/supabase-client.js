@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Supabase client + data helpers
+   Prime Access Ghana — Supabase client + data helpers
    Loaded as a regular <script> after the Supabase UMD bundle.
 
    Exposes window.CH with:

@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — categories & materials taxonomy
+-- Prime Access Ghana — categories & materials taxonomy
 -- Single-line statements only. Idempotent — safe to re-run.
 -- ============================================================
 

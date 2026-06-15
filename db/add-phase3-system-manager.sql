@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 3 fix: System Manager role
+-- Prime Access Ghana — Phase 3 fix: System Manager role
 -- A 5th role with absolute control, identical to admin/Director.
 -- Use case: technical / operations lead who runs the system but
 -- isn't necessarily the business "Director".

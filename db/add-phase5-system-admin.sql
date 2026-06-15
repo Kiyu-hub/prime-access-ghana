@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 5: System Admin promotion + hardening
+-- Prime Access Ghana — Phase 5: System Admin promotion + hardening
 -- The overall manager (above the Director). Absolute capability,
 -- needs no branch assignment, and is hidden from every staff
 -- listing / report in the app.

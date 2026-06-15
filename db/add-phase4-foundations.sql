@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 4
+-- Prime Access Ghana — Phase 4
 --   1. Dev/Live mode foundation  (`mode` column on data tables)
 --   2. Director / System Manager: move transfer without payment
 --   3. Optional staff photo (`image_url`)

@@ -1,4 +1,4 @@
-# The Manual — Clasikal Homes Portal
+# The Manual — Prime Access Ghana Portal
 
 Everything you need to operate the platform. One page. Read top to bottom.
 

@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — Runtime config
+   Prime Access Ghana — Runtime config
    Fill these four values, save, reload the browser. That's it.
 
    • SUPABASE_URL & SUPABASE_ANON_KEY:
@@ -36,7 +36,7 @@ window.CH_CONFIG = {
         .map(([k]) => k);
     if (missing.length) {
         console.warn(
-            '[Clasikal Homes] Missing config values: ' + missing.join(', ') +
+            '[Prime Access Ghana] Missing config values: ' + missing.join(', ') +
             '\nOpen scripts/config.js and fill them in. See SETUP.md for details.'
         );
     }

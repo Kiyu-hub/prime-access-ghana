@@ -1,4 +1,4 @@
-# Clasikal Homes — Setup Guide
+# Prime Access Ghana — Setup Guide
 
 Five tasks. ~15 minutes total. Do them in this order.
 
@@ -9,7 +9,7 @@ Five tasks. ~15 minutes total. Do them in this order.
 1. Go to **https://supabase.com** → **Start your project** → sign in with GitHub.
 2. Click **New project**.
 3. Fill in:
-   - **Name**: `clasikal-homes`
+   - **Name**: `prime-access-ghana`
    - **Database password**: pick a strong one and save it (you won't need it day-to-day, but keep it)
    - **Region**: pick the closest to Ghana — `West EU (Ireland)` works well, or `US East`
 4. Click **Create new project** and wait ~2 minutes for provisioning.
@@ -35,19 +35,19 @@ Five tasks. ~15 minutes total. Do them in this order.
 ## 3. Run the database schema (2 min)
 
 1. In Supabase sidebar → 🗄️ **SQL Editor** → **+ New query**.
-2. Open `db/schema.sql` from this folder.
+2. Open **`db/setup-all.sql`** from this folder. *(This single file bundles the base schema plus every migration in the correct order — run it instead of the individual files.)*
 3. Copy the entire contents and paste them into the editor.
 4. Click **Run** (or press Ctrl+Enter).
 5. You should see `Success. No rows returned.` plus a few notices. That's expected.
 6. To verify, paste this and run:
    ```sql
-   select * from verify_login('director@clasikalhomes.com', 'clasikal@2026');
+   select * from verify_login('director@primeaccessgh.com', 'prime@2026');
    ```
    You should get back one row with `is_admin = true`.
 
 **Default Director login (CHANGE THE PASSWORD after first sign-in from Admin → Staff):**
-- Email: `Director@clasikalhomes.com`
-- Password: `clasikal@2026`
+- Email: `director@primeaccessgh.com`
+- Password: `prime@2026`
 
 ---
 
@@ -109,7 +109,7 @@ Push to GitHub and connect to **Vercel** (https://vercel.com/new) or **Netlify**
 
 **"Login failed" with the seeded credentials:**
 - The schema seed inserts the email in lowercase. Make sure step 3 finished without errors.
-- Re-run `select * from verify_login('director@clasikalhomes.com', 'clasikal@2026');` in SQL Editor. If it returns 0 rows, the seed didn't run — re-run `db/schema.sql`.
+- Re-run `select * from verify_login('director@primeaccessgh.com', 'prime@2026');` in SQL Editor. If it returns 0 rows, the seed didn't run — re-run `db/setup-all.sql`.
 
 **Cloudinary upload fails with `Upload preset must be in whitelist`:**
 - Your preset is still set to **Signed**. Edit it → Signing Mode → **Unsigned** → Save.

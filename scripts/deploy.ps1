@@ -1,5 +1,5 @@
 # ============================================================
-# Clasikal Homes — one-shot deploy helper (Windows PowerShell)
+# Prime Access Ghana — one-shot deploy helper (Windows PowerShell)
 # Usage:  pwsh scripts/deploy.ps1 "commit message"
 # Or:     scripts\deploy.ps1
 # ============================================================

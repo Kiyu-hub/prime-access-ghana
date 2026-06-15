@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — PDF Report Export
+   Prime Access Ghana — PDF Report Export
    Uses jsPDF + jspdf-autotable (loaded as UMD before this script).
 
    Branded multi-page PDF: cover header with logo, sections of tables,
@@ -9,12 +9,12 @@
     'use strict';
 
     const BRAND = {
-        name:     'CLASIKAL HOMES',
+        name:     'PRIME ACCESS GHANA',
         tagline:  'Inventory Report',
-        email:    'clasikalhomesgh@gmail.com',
-        location: 'East Legon Hills, Accra · Ghana',
-        phone:    '054 619 1433  /  050 051 5050',
-        tagline2: 'we listen, we create, you enjoy',
+        email:    'primeaccessgh@gmail.com',
+        location: 'Accra · Ghana',
+        phone:    '054 417 4341  /  059 942 8820',
+        tagline2: '@primeacessgh',
         logoUrl:  'assets/logo.png',
         navy:     [11, 31, 63],
         accent:   [3, 105, 161],
@@ -242,7 +242,7 @@
             doc.text('Page ' + i + ' of ' + total, pageW / 2, fy + 47, { align: 'center' });
         }
 
-        const fname = 'Clasikal-Homes_Report_' + today.toISOString().slice(0, 10) + '.pdf';
+        const fname = 'Prime-Access-Ghana_Report_' + today.toISOString().slice(0, 10) + '.pdf';
         doc.save(fname);
 
         // helpers ------------------------------------------------------------
@@ -534,7 +534,7 @@
             doc.text('Page ' + i + ' of ' + total, pageW / 2, fy + 47, { align: 'center' });
         }
 
-        doc.save('Clasikal-Homes_Activity-Log_' + today.toISOString().slice(0, 10) + '.pdf');
+        doc.save('Prime-Access-Ghana_Activity-Log_' + today.toISOString().slice(0, 10) + '.pdf');
     }
 
     window.CH = Object.assign(window.CH || {}, {

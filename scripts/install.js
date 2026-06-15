@@ -1,5 +1,5 @@
 /* ============================================================
-   Clasikal Homes — PWA install
+   Prime Access Ghana — PWA install
    Single branded chip, top-right-of-bottom corner. Adapts to platform:
    - Chromium / Edge / Android: uses captured beforeinstallprompt
    - iOS Safari: shows "Add to Home Screen" hint
@@ -47,8 +47,8 @@
             transition: opacity 200ms ease, transform 200ms ease;
         `;
         el.innerHTML = `
-            <img src="assets/logo.png?v=4" alt="" width="32" height="32" style="border-radius:8px;background:#fff;padding:3px;object-fit:contain;flex-shrink:0;" />
-            <span id="chInstallText" style="flex:1;min-width:0;">Install Clasikal Homes</span>
+            <img src="assets/logo-dark.png?v=1" alt="" width="32" height="32" style="border-radius:8px;background:#fff;padding:3px;object-fit:contain;flex-shrink:0;" />
+            <span id="chInstallText" style="flex:1;min-width:0;">Install Prime Access Ghana</span>
             <button id="chInstallBtn" type="button" style="
                 background: linear-gradient(135deg, #0EA5E9, #38BDF8);
                 color: #051022; border: 0;
@@ -118,15 +118,15 @@
             detail = 'Tap the <b>Share</b> button in Safari (square with the up arrow), then choose <b>Add to Home Screen</b>.';
         } else if (isMacDesktop()) {
             title = 'Install on Mac';
-            detail = 'In Safari: <b>File → Add to Dock</b>. In Chrome / Edge: click the install icon (⊕) in the address bar, or use <b>menu → Install Clasikal Homes</b>.';
+            detail = 'In Safari: <b>File → Add to Dock</b>. In Chrome / Edge: click the install icon (⊕) in the address bar, or use <b>menu → Install Prime Access Ghana</b>.';
         } else if (isFirefox()) {
             title = 'Install on Firefox';
             detail = 'Firefox desktop does not support installing web apps. To install, open this page in <b>Chrome</b> or <b>Edge</b> and use the install button in the address bar.';
         } else if (isEdgeOrChrome()) {
-            title = 'Install Clasikal Homes';
-            detail = 'Click the install icon (⊕) on the right side of the address bar, or open the browser <b>⋮ menu → Install Clasikal Homes</b>.';
+            title = 'Install Prime Access Ghana';
+            detail = 'Click the install icon (⊕) on the right side of the address bar, or open the browser <b>⋮ menu → Install Prime Access Ghana</b>.';
         } else {
-            title = 'Install Clasikal Homes';
+            title = 'Install Prime Access Ghana';
             detail = 'Open your browser menu and look for <b>Install</b> or <b>Add to Home Screen</b>.';
         }
         hint = document.createElement('div');
@@ -170,7 +170,7 @@
         // If chip is already up, update its label
         if (chip) {
             const txt = chip.querySelector('#chInstallText');
-            if (txt) txt.textContent = 'Install Clasikal Homes';
+            if (txt) txt.textContent = 'Install Prime Access Ghana';
         }
     });
 

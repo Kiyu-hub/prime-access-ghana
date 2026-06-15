@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 2: Multi-branch / multi-warehouse manager
+-- Prime Access Ghana — Phase 2: Multi-branch / multi-warehouse manager
 -- A single staff member can be the manager of many branches (or
 -- many warehouses), or be flagged as "manages all branches" /
 -- "manages all warehouses" for a super-manager.

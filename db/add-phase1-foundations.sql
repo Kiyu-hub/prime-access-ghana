@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 1: warehouses + roles + staff codes
+-- Prime Access Ghana — Phase 1: warehouses + roles + staff codes
 -- Safe to re-run. Run in Supabase SQL editor as one piece.
 -- Roles consolidated into a single strict enum on staff.role
 -- (was free-text job titles, now permission tier).

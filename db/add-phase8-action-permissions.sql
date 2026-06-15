@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 8: Action permissions (what a role/user can DO)
+-- Prime Access Ghana — Phase 8: Action permissions (what a role/user can DO)
 -- Page access (Phase 6/7) controls which pages are VISIBLE. This adds a
 -- second, independent layer: which ACTIONS a role or individual user may
 -- perform on a page they can see — e.g. editing product info.

@@ -1,5 +1,5 @@
 -- ============================================================
--- Clasikal Homes — Phase 2: Product Transfer Requests
+-- Prime Access Ghana — Phase 2: Product Transfer Requests
 -- Inter-warehouse stock movement, no approval step.
 -- Flow: request -> (source ships physically) -> destination receives
 --       Receive atomically moves stock source -> destination.
