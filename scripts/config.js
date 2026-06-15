@@ -19,8 +19,8 @@
    ============================================================ */
 
 window.CH_CONFIG = {
-    SUPABASE_URL:            'https://xmczczqaxlcremlojqyb.supabase.co',
-    SUPABASE_ANON_KEY:       'sb_publishable_UtkdO8Osq7VQiv24hbIQbA_FGGZhUTN',
+    SUPABASE_URL:            'https://smiryebpxnhvmrbclbmx.supabase.co',
+    SUPABASE_ANON_KEY:       'sb_publishable_fIEZHwLGMgU2YZAPS7Vt_A_tig3D94q',
 
     CLOUDINARY_CLOUD_NAME:   'dnoji4yat',
     CLOUDINARY_UPLOAD_PRESET: 'clasikal_unsigned',  // unsigned preset name
