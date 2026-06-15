@@ -42,6 +42,11 @@ begin
   end loop;
 end $$;
 
+-- Views can't drop/reorder columns via CREATE OR REPLACE VIEW either, and
+-- staff_view gained columns across migrations. Drop it so the early
+-- definition can recreate it cleanly on a re-run. (No-op on a fresh DB.)
+drop view if exists public.staff_view cascade;
+
 
 -- ============================================================
 -- SECTION: schema.sql
@@ -1765,4 +1770,3 @@ create policy "uap_write" on public.user_action_permissions for all using (true)
 
 alter table public.products
     add column if not exists name text;
-

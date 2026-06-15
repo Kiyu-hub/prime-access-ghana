@@ -26,3 +26,8 @@ begin
     execute r.cmd;
   end loop;
 end $$;
+
+-- Views can't drop/reorder columns via CREATE OR REPLACE VIEW either, and
+-- staff_view gained columns across migrations. Drop it so the early
+-- definition can recreate it cleanly on a re-run. (No-op on a fresh DB.)
+drop view if exists public.staff_view cascade;
