@@ -276,8 +276,8 @@ insert into public.staff (email, password_hash, name, role, branch_id, is_admin)
 select
     'director@primeaccessgh.com',
     crypt('prime@2026', gen_salt('bf', 10)),
-    'Director',
-    'Admin',
+    'System Admin',
+    'system_manager',
     (select id from public.branches where name = 'Head Office'),
     true
 where not exists (
