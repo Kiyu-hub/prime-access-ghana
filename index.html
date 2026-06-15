@@ -31,8 +31,11 @@
             --c-bg-1:       #051022;
             --c-bg-2:       #0A1A33;
             --c-bg-3:       #112C58;
+            --c-navy:       #0B1F3F;
+            --c-navy-2:     #112C58;
             --c-accent:     #38BDF8;
             --c-accent-2:   #0EA5E9;
+            --c-accent-3:   #38BDF8;
             --c-line:       rgba(255, 255, 255, 0.08);
             --c-ink:        #E2E8F0;
             --c-ink-2:      #94A3B8;
@@ -67,7 +70,11 @@
         body {
             position: relative;
             isolation: isolate;
-            background: radial-gradient(120% 90% at 100% 0%, #0E3A66 0%, #0A2148 35%, #061427 70%, #040D1C 100%);
+            background: radial-gradient(120% 90% at 100% 0%,
+                color-mix(in srgb, var(--c-navy) 62%, var(--c-accent) 38%) 0%,
+                var(--c-navy) 42%,
+                color-mix(in srgb, var(--c-navy), black 30%) 72%,
+                color-mix(in srgb, var(--c-navy), black 55%) 100%);
             display: grid;
             place-items: center;
             padding: 16px;
@@ -389,6 +396,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
     <script src="scripts/supabase-client.js"></script>
     <script src="scripts/auth.js"></script>
+    <script src="scripts/theme.js"></script>
     <script src="scripts/install.js"></script>
     <script>
         document.getElementById('year').textContent = new Date().getFullYear();

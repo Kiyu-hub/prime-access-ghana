@@ -378,6 +378,7 @@
         if (view === 'purchases') loadPurchases();
         if (view === 'verify-invoice') initVerifyInvoice();
         if (view === 'permissions') renderActivePermTab();
+        if (view === 'theme' && window.PAGTheme) window.PAGTheme.renderPage(document.getElementById('themePageHost'));
     }
 
     /* ---------- logout ---------- */
@@ -5392,12 +5393,12 @@
     // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions'];
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions','theme'];
     // Director gets everything except System Admin-only ops AND id-cards
     // by default; id-cards is dynamically allowed for Director at runtime
     // when the System Admin's feature flag is on (see switchView).
     // 'permissions' is System Admin-only (it controls the other roles).
-    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions');
+    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions' && v !== 'theme');
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
