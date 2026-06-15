@@ -949,11 +949,11 @@
            The System Admin (overall manager) is NEVER limited by a feature
            flag — :not([data-role="system_manager"]) keeps every gated item
            visible to them so they always have full access. */
-        body[data-flag-transfers="off"]:not([data-role="system_manager"]) .nav a[data-view="product-transfers"],
-        body[data-flag-transfers="off"]:not([data-role="system_manager"]) .nav a[data-view="verify-invoice"],
-        body[data-flag-transfers="off"]:not([data-role="system_manager"]) #pdetailRequestBtn,
-        body[data-flag-transfers="off"]:not([data-role="system_manager"]) #navTransfersBadge { display: none !important; }
-        body[data-flag-move-stock="off"]:not([data-role="system_manager"]) .nav a[data-view="move-stock"] { display: none !important; }
+        body[data-flag-transfers="off"] .nav a[data-view="product-transfers"],
+        body[data-flag-transfers="off"] .nav a[data-view="verify-invoice"],
+        body[data-flag-transfers="off"] #pdetailRequestBtn,
+        body[data-flag-transfers="off"] #navTransfersBadge { display: none !important; }
+        body[data-flag-move-stock="off"] .nav a[data-view="move-stock"] { display: none !important; }
 
         /* Dev-mode banner: top of the page, only when toggle is on Dev */
         body[data-mode="dev"] .main::before {
@@ -5455,7 +5455,7 @@
                         <h1>Branches</h1>
                         <p>Showrooms and warehouses across the network.</p>
                     </div>
-                    <div class="topbar__actions">
+                    <div class="topbar__actions" id="branchTopbarActions">
                         <button class="btn btn--primary" id="addBranchBtn">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
                             <span>Create Branch</span>
@@ -5471,6 +5471,20 @@
                     </div>
                 </div>
 
+                <!-- Centered CTA shown when no branch exists yet -->
+                <div id="branchNoBranchState" style="display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; min-height:55vh;">
+                    <div class="empty__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
+                    </div>
+                    <h2 style="margin:0;">No branch yet</h2>
+                    <p style="margin:0; color:var(--c-ink-4); max-width:380px;">Create a branch to get started. Showrooms and warehouses are added under a branch.</p>
+                    <button class="btn btn--primary" id="createFirstBranchBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                        <span>Create Branch</span>
+                    </button>
+                </div>
+
+                <div id="branchesContent">
                 <div class="table-wrap">
                     <div class="table-scroll">
                         <table class="tbl">
@@ -5521,6 +5535,7 @@
                         <p>Add a showroom under a branch.</p>
                     </div>
                 </div>
+                </div><!-- /#branchesContent -->
             </section>
 
             <!-- ============================== -->

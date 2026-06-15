@@ -326,17 +326,17 @@
         // and Move Stock for the whole platform. Block the view if off —
         // EXCEPT for the System Admin themselves, who is never limited by a
         // feature flag and always has full access to every page.
-        if (currentRole() !== 'system_manager') {
-            if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
-                toast('This feature is currently disabled.', 'info');
-                switchView('products');
-                return;
-            }
-            if (view === 'move-stock' && featureFlagsCache && featureFlagsCache.move_stock_enabled === false) {
-                toast('This feature is currently disabled.', 'info');
-                switchView('products');
-                return;
-            }
+        // Feature flags hide a feature for EVERYONE (incl. System Admin) when
+        // the System Admin unticks it — they re-enable it from the sidebar toggle.
+        if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
+            toast('This feature is currently disabled.', 'info');
+            switchView('products');
+            return;
+        }
+        if (view === 'move-stock' && featureFlagsCache && featureFlagsCache.move_stock_enabled === false) {
+            toast('This feature is currently disabled.', 'info');
+            switchView('products');
+            return;
         }
         // Permission guard: the System Admin can block pages per role AND per
         // individual user (System Admin itself is never restricted).
@@ -1774,35 +1774,34 @@
         }
     }
 
-    function setBtnLocked(btn, locked) {
-        if (!btn) return;
-        btn.disabled = !!locked;
-        btn.style.filter = locked ? 'blur(1.2px)' : '';
-        btn.style.opacity = locked ? '0.5' : '';
-        btn.style.pointerEvents = locked ? 'none' : '';
-        if (locked) btn.title = 'Create a branch first';
-    }
-
     function renderBranches() {
+        const canManage = isSuperRole(currentRole());
+        const hasBranch = branches.length > 0;
+        const topbarActions = document.getElementById('branchTopbarActions');
+        const noBranchState = document.getElementById('branchNoBranchState');
+        const content = document.getElementById('branchesContent');
+
+        // Non-negotiable: with no branch, showrooms & warehouses can't exist —
+        // expose nothing about them. Show a centered "Create Branch" CTA only.
+        if (!hasBranch) {
+            if (topbarActions) topbarActions.style.display = 'none';
+            if (content) content.style.display = 'none';
+            if (noBranchState) noBranchState.style.display = 'flex';
+            return;
+        }
+        if (topbarActions) topbarActions.style.display = '';
+        if (noBranchState) noBranchState.style.display = 'none';
+        if (content) content.style.display = '';
+
         // Only the Director / System Admin can create branches/showrooms/warehouses.
-        const _canManage = isSuperRole(currentRole());
-        const _hasBranch = branches.length > 0;
         const _addShowroomBtn = document.getElementById('addShowroomBtn');
         const _addWhBtn = document.getElementById('addWarehouseFromBranchBtn');
-        if (els.addBranchBtn) els.addBranchBtn.style.display = _canManage ? '' : 'none';
-        if (_addShowroomBtn) _addShowroomBtn.style.display = _canManage ? '' : 'none';
-        if (_addWhBtn) _addWhBtn.style.display = _canManage ? '' : 'none';
-        // Non-negotiable: showrooms & warehouses can't exist without a branch.
-        setBtnLocked(_addShowroomBtn, !_hasBranch);
-        setBtnLocked(_addWhBtn, !_hasBranch);
+        if (els.addBranchBtn) els.addBranchBtn.style.display = canManage ? '' : 'none';
+        if (_addShowroomBtn) _addShowroomBtn.style.display = canManage ? '' : 'none';
+        if (_addWhBtn) _addWhBtn.style.display = canManage ? '' : 'none';
 
         renderShowrooms();
 
-        if (!_hasBranch) {
-            els.branchesBody.innerHTML = '';
-            els.branchesEmpty.style.display = 'block';
-            return;
-        }
         els.branchesEmpty.style.display = 'none';
 
         const staffById = new Map((staffList || []).map((s) => [s.id, s]));
@@ -1853,6 +1852,10 @@
     });
 
     els.addBranchBtn.addEventListener('click', () => openBranchAdd());
+    {
+        const createFirstBranch = document.getElementById('createFirstBranchBtn');
+        if (createFirstBranch) createFirstBranch.addEventListener('click', () => openBranchAdd());
+    }
     {
         const addWhFromBranch = document.getElementById('addWarehouseFromBranchBtn');
         if (addWhFromBranch) addWhFromBranch.addEventListener('click', () => {
