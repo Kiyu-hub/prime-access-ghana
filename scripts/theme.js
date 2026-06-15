@@ -104,42 +104,8 @@
             '.pag-theme-row input[type=color]{width:42px;height:28px;border:1px solid #E2E8F0;border-radius:6px;background:none;padding:0;cursor:pointer;flex-shrink:0;}' +
             '.pag-theme-reset{margin-top:12px;width:100%;padding:9px 10px;border:1px solid #E2E8F0;border-radius:8px;background:#F8FAFC;color:#0F172A;font-size:13px;font-weight:600;cursor:pointer;}' +
             '.pag-theme-reset:hover{background:#EEF2F6;}' +
-            '#pagThemePanel{position:fixed;right:18px;bottom:74px;z-index:9999;width:280px;max-width:calc(100vw - 36px);display:none;background:#fff;border:1px solid #E2E8F0;border-radius:14px;box-shadow:0 30px 80px rgba(11,31,63,0.28);padding:14px 16px;color:#0F172A;}' +
-            '#pagThemeFab{position:fixed;right:18px;bottom:18px;z-index:9998;width:46px;height:46px;border-radius:50%;border:0;cursor:pointer;font-size:20px;line-height:46px;color:#fff;background:linear-gradient(135deg,var(--c-navy,#0B1F3F),var(--c-accent,#0369A1));box-shadow:0 8px 24px rgba(2,6,23,0.28);}' +
             '.pag-theme-card{max-width:420px;background:#fff;border:1px solid var(--c-line,#E2E8F0);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow-sm,0 1px 2px rgba(2,6,23,0.05));}';
         document.head.appendChild(st);
-    }
-
-    // Floating quick-access button + panel.
-    function buildFab() {
-        if (document.getElementById('pagThemeFab')) return;
-        var fab = document.createElement('button');
-        fab.id = 'pagThemeFab';
-        fab.type = 'button';
-        fab.title = 'Theme';
-        fab.setAttribute('aria-label', 'Open theme customizer');
-        fab.innerHTML = '🎨';
-
-        var panel = document.createElement('div');
-        panel.id = 'pagThemePanel';
-        panel.innerHTML =
-            '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">' +
-                '<strong style="font-size:14px;">Theme</strong>' +
-                '<button type="button" id="pagThemeClose" aria-label="Close" style="border:0;background:none;font-size:18px;line-height:1;cursor:pointer;color:#64748B;">×</button>' +
-            '</div>' +
-            '<p style="margin:0 0 8px;font-size:11.5px;color:#64748B;">Recolor navy &amp; accent. Saved on this device.</p>' +
-            '<div id="pagThemeFabBody"></div>';
-
-        document.body.appendChild(panel);
-        document.body.appendChild(fab);
-        buildControls(panel.querySelector('#pagThemeFabBody'));
-
-        fab.addEventListener('click', function () {
-            panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-        });
-        panel.querySelector('#pagThemeClose').addEventListener('click', function () {
-            panel.style.display = 'none';
-        });
     }
 
     // Render the full Theme page (called by dashboard switchView).
@@ -158,16 +124,4 @@
     }
 
     window.PAGTheme = { renderPage: renderPage, applySaved: applySaved };
-
-    function init() {
-        if (!isSystemAdmin()) return;
-        injectStyles();
-        buildFab();
-    }
-
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
-    }
 })();
