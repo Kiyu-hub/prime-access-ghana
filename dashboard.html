@@ -301,7 +301,10 @@
            Reports stays visible for them but money is hidden via the
            .no-money-warehouse-mgr class applied to financial elements. */
         body[data-role="warehouse_manager"] .nav a[data-view="showroom"] { display: none !important; }
-        body[data-role="warehouse_manager"] .no-money-warehouse-mgr { display: none !important; }
+        /* Warehouse-side users (warehouse manager OR warehouse staff) never see
+           money / payment info. */
+        body[data-role="warehouse_manager"] .no-money-warehouse-mgr,
+        body[data-side="warehouse"] .no-money-warehouse-mgr { display: none !important; }
 
         /* Plain Staff: hide Activity Logs nav link, but keep Drafts hidden.
            (Already hidden via .admin-only, this is just an explicit assert.) */

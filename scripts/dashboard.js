@@ -2133,6 +2133,12 @@
     // manager); everyone else gets the three operational roles.
     function populateStaffRoleOptions(editingRole) {
         if (!els.staffRole) return;
+        // Branch Manager may only create plain Staff (assigned to a showroom or
+        // warehouse). They can't mint managers or super roles.
+        if (currentRole() === 'branch_manager') {
+            els.staffRole.innerHTML = '<option value="staff">Staff</option>';
+            return;
+        }
         const roles = [
             ['staff', 'Staff'],
             ['branch_manager', 'Branch Manager'],
@@ -2182,7 +2188,15 @@
         //   Admin DOES see System Admin rows in their own dashboard, so they can
         //   view and edit their own account (and any other System Admin).
         const viewerIsSysAdmin = currentRole() === 'system_manager';
-        const visibleStaff = (staffList || []).filter((s) => isSystemAdminStaff(s) ? viewerIsSysAdmin : true);
+        let visibleStaff = (staffList || []).filter((s) => isSystemAdminStaff(s) ? viewerIsSysAdmin : true);
+        // Branch Manager only sees/manages staff of their own branch(es).
+        if (currentRole() === 'branch_manager') {
+            const mine = getManagedBranchIds();
+            if (mine !== 'ALL') {
+                const set = new Set(mine);
+                visibleStaff = visibleStaff.filter((s) => set.has(s.branch_id));
+            }
+        }
         if (visibleStaff.length === 0) {
             els.staffBody.innerHTML = '';
             els.staffEmpty.style.display = 'block';
@@ -5620,19 +5634,63 @@
     // when the System Admin's feature flag is on (see switchView).
     // 'permissions' is System Admin-only (it controls the other roles).
     const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions' && v !== 'theme');
+    // Staff views depend on their workplace (showroom vs warehouse).
+    const STAFF_SHOWROOM_VIEWS  = ['products','showroom','reports','messages','announcements','new-sale','purchases'];
+    const STAFF_WAREHOUSE_VIEWS = ['warehouse-stock','purchases','reports','messages','announcements','product-transfers','verify-invoice'];
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
-        // Branch Manager: normal privileges + warehouse VIEW (read-only,
-        // scoped to their branch). No add/edit/delete — that stays admin.
-        branch_manager:    ['products','showroom','reports','messages','announcements','logs','warehouses','warehouse-stock','product-transfers','new-sale','purchases'],
-        // Warehouse Manager: stock & transfers focus. Reports visible but
-        // money fields are hidden by CSS (no-money-warehouse-mgr).
-        // Warehouse Stock is their primary view.
-        warehouse_manager: ['products','warehouse-stock','reports','messages','announcements','product-transfers','verify-invoice'],
-        // Staff: can record sales AND see their OWN sales history.
-        staff:             ['products','showroom','reports','messages','announcements','product-transfers','new-sale','purchases'],
+        // Branch Manager: full branch-wide ops for their branch + can manage
+        // (create) staff. Sees both showroom and warehouse of their branch.
+        branch_manager:    ['products','showroom','warehouse-stock','warehouses','reports','messages','announcements','logs','product-transfers','new-sale','purchases','staff'],
+        // Warehouse Manager: warehouse only — stock + transfers + verify.
+        // No new-sale; Purchases shown (to see pending sales). Money hidden.
+        warehouse_manager: STAFF_WAREHOUSE_VIEWS,
+        // Staff default = showroom side (overridden by workplace below).
+        staff:             STAFF_SHOWROOM_VIEWS,
     };
+
+    // A user is "warehouse-side" if they're a warehouse manager, or a staff
+    // member assigned to a warehouse. They see warehouse info, not the showroom.
+    function isWarehouseSideUser() {
+        const r = currentRole();
+        if (r === 'warehouse_manager') return true;
+        if (r === 'staff' && session && session.warehouse_id) return true;
+        return false;
+    }
+
+    // Single source of truth for which views the current user may access —
+    // role + workplace + Director's dynamic id-cards + per-user denials.
+    function allowedViewsForUser() {
+        const role = currentRole();
+        let base;
+        if (role === 'staff') base = (isWarehouseSideUser() ? STAFF_WAREHOUSE_VIEWS : STAFF_SHOWROOM_VIEWS).slice();
+        else base = (VIEWS_BY_ROLE[role] || VIEWS_BY_ROLE.staff).slice();
+        if (role === 'admin' && featureFlagsCache && featureFlagsCache.id_cards_visible_to_director && !base.includes('id-cards')) {
+            base.push('id-cards');
+        }
+        let denied = [];
+        try { denied = deniedViewsForCurrentUser() || []; } catch (_) {}
+        const isDenied = (v) => denied && (typeof denied.has === 'function' ? denied.has(v) : denied.indexOf(v) >= 0);
+        return base.filter((v) => !isDenied(v));
+    }
+
+    // Drive nav visibility entirely from JS (overrides the legacy CSS class
+    // rules via !important) so role + workplace + feature flags + setup gate
+    // are all honoured in one place.
+    function applyNavVisibility() {
+        const allowed = new Set(allowedViewsForUser());
+        const flags = featureFlagsCache || {};
+        const setupIncomplete = document.body.dataset.setup === 'incomplete';
+        document.querySelectorAll('.nav a[data-view]').forEach((a) => {
+            const v = a.dataset.view;
+            let vis = allowed.has(v);
+            if (vis && (v === 'product-transfers' || v === 'verify-invoice') && flags.transfers_enabled === false) vis = false;
+            if (vis && v === 'move-stock' && flags.move_stock_enabled === false) vis = false;
+            if (vis && setupIncomplete && typeof SETUP_BLOCKED_VIEWS !== 'undefined' && SETUP_BLOCKED_VIEWS.includes(v)) vis = false;
+            a.style.setProperty('display', vis ? 'flex' : 'none', 'important');
+        });
+    }
 
     function currentRole() {
         if (!session) return 'staff';
@@ -5728,22 +5786,16 @@
         return Array.from(out);
     }
 
-    function viewAllowedForRole(view, role) {
-        const allowed = VIEWS_BY_ROLE[role] || VIEWS_BY_ROLE.staff;
-        // Director gets temporary access to id-cards when the System Admin
-        // has enabled it via the feature flag.
-        if (view === 'id-cards'
-            && role === 'admin'
-            && featureFlagsCache
-            && featureFlagsCache.id_cards_visible_to_director) {
-            return true;
-        }
-        return allowed.includes(view);
+    function viewAllowedForRole(view /*, role */) {
+        return allowedViewsForUser().includes(view);
     }
 
     function applyRoleVisibility() {
         const role = currentRole();
         document.body.dataset.role = role;
+        // Workplace side powers money-hiding + nav tailoring for warehouse users.
+        document.body.dataset.side = isWarehouseSideUser() ? 'warehouse' : 'showroom';
+        applyNavVisibility();
     }
 
     /* Setup gate: the platform isn't usable until at least one branch AND one
@@ -5756,6 +5808,7 @@
     function applySetupState() {
         const ready = (branches && branches.length > 0) && (showroomsCache && showroomsCache.length > 0);
         document.body.dataset.setup = ready ? 'ready' : 'incomplete';
+        applyNavVisibility();
         if (!ready && SETUP_BLOCKED_VIEWS.includes(currentView)) {
             switchView((branches && branches.length > 0) ? 'showrooms' : 'branches');
         }
@@ -7487,6 +7540,7 @@
         document.body.dataset.flagTransfers  = featureFlagsCache.transfers_enabled  ? 'on' : 'off';
         document.body.dataset.flagMoveStock  = featureFlagsCache.move_stock_enabled ? 'on' : 'off';
         document.body.dataset.flagIdCardsDirector = featureFlagsCache.id_cards_visible_to_director ? 'on' : 'off';
+        try { applyNavVisibility(); } catch (_) {}
         // Reflect into the sidebar toggles if present
         const t = document.getElementById('ffTransfers');
         const m = document.getElementById('ffMoveStock');
