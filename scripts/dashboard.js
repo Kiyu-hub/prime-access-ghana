@@ -358,6 +358,7 @@
         $$('.nav a[data-view]').forEach((a) => a.classList.toggle('is-active', a.dataset.view === view));
 
         if (view === 'branches') loadBranches();
+        if (view === 'showrooms') loadShowrooms();
         if (view === 'staff')    loadStaff();
         if (view === 'reports')  loadReports();
         if (view === 'messages') openChat();
@@ -1768,6 +1769,7 @@
             try { showroomsCache = await window.CH.showrooms.list(); } catch (_) { showroomsCache = []; }
             renderBranches();
             populateBranchSelect();
+            applySetupState();
         } catch (e) {
             console.error(e);
             toast('Could not load branches: ' + (e.message || 'unknown error'), 'error');
@@ -1793,14 +1795,8 @@
         if (noBranchState) noBranchState.style.display = 'none';
         if (content) content.style.display = '';
 
-        // Only the Director / System Admin can create branches/showrooms/warehouses.
-        const _addShowroomBtn = document.getElementById('addShowroomBtn');
-        const _addWhBtn = document.getElementById('addWarehouseFromBranchBtn');
+        // Only the Director / System Admin can create branches.
         if (els.addBranchBtn) els.addBranchBtn.style.display = canManage ? '' : 'none';
-        if (_addShowroomBtn) _addShowroomBtn.style.display = canManage ? '' : 'none';
-        if (_addWhBtn) _addWhBtn.style.display = canManage ? '' : 'none';
-
-        renderShowrooms();
 
         els.branchesEmpty.style.display = 'none';
 
@@ -1864,7 +1860,7 @@
         });
     }
 
-    /* ---- Showrooms (child of a branch) ---- */
+    /* ---- Showrooms (dedicated page, child of a branch) ---- */
     let showroomsCache = [];
     const showroomEls = {
         modal:    document.getElementById('showroomModal'),
@@ -1876,23 +1872,44 @@
         location: document.getElementById('showroomLocation'),
         body:     document.getElementById('showroomsBody'),
         empty:    document.getElementById('showroomsEmpty'),
+        topbar:   document.getElementById('showroomTopbarActions'),
+        noBranch: document.getElementById('showroomNoBranchState'),
+        content:  document.getElementById('showroomsContent'),
     };
 
     async function loadShowrooms() {
-        try { showroomsCache = await window.CH.showrooms.list(); }
-        catch (e) { console.warn('loadShowrooms failed', e); showroomsCache = []; }
+        try {
+            if (!branches || branches.length === 0) {
+                try { branches = await window.CH.branches.list(); } catch (_) {}
+            }
+            showroomsCache = await window.CH.showrooms.list();
+        } catch (e) { console.warn('loadShowrooms failed', e); showroomsCache = []; }
         renderShowrooms();
+        applySetupState();
     }
 
     function renderShowrooms() {
         if (!showroomEls.body) return;
+        const canManage = isSuperRole(currentRole());
+        const hasBranch = branches.length > 0;
+
+        // Showrooms need a branch first — gate the page like the branches page.
+        if (!hasBranch) {
+            if (showroomEls.topbar) showroomEls.topbar.style.display = 'none';
+            if (showroomEls.content) showroomEls.content.style.display = 'none';
+            if (showroomEls.noBranch) showroomEls.noBranch.style.display = 'flex';
+            return;
+        }
+        if (showroomEls.topbar) showroomEls.topbar.style.display = canManage ? '' : 'none';
+        if (showroomEls.noBranch) showroomEls.noBranch.style.display = 'none';
+        if (showroomEls.content) showroomEls.content.style.display = '';
+
         if (!showroomsCache.length) {
             showroomEls.body.innerHTML = '';
             if (showroomEls.empty) showroomEls.empty.style.display = 'block';
             return;
         }
         if (showroomEls.empty) showroomEls.empty.style.display = 'none';
-        const canManage = isSuperRole(currentRole());
         showroomEls.body.innerHTML = showroomsCache.map((s) => `
             <tr>
                 <td><strong style="color:var(--c-ink-2);">${escapeHtml(s.name)}</strong></td>
@@ -1959,6 +1976,8 @@
     {
         const addShowroomBtn = document.getElementById('addShowroomBtn');
         if (addShowroomBtn) addShowroomBtn.addEventListener('click', () => openShowroomAdd());
+        const goBranches = document.getElementById('showroomGoToBranchesBtn');
+        if (goBranches) goBranches.addEventListener('click', () => switchView('branches'));
     }
     if (showroomEls.form) showroomEls.form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -2054,8 +2073,14 @@
     }
 
     function populateBranchSelect() {
-        const opts = ['<option value="">— No branch —</option>']
-            .concat(branches.map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`))
+        // The staff "Showroom" picker lists showrooms; the value is the
+        // showroom's branch_id (staff are scoped by branch). Falls back to
+        // branches only if no showrooms exist yet.
+        const list = (showroomsCache && showroomsCache.length)
+            ? showroomsCache.map((s) => ({ id: s.branch_id, label: s.name }))
+            : (branches || []).map((b) => ({ id: b.id, label: b.name }));
+        const opts = ['<option value="">— Select showroom —</option>']
+            .concat(list.map((x) => `<option value="${x.id}">${escapeHtml(x.label)}</option>`))
             .join('');
         els.staffBranch.innerHTML = opts;
     }
@@ -2090,8 +2115,9 @@
     async function loadStaff() {
         try {
             staffList = await window.CH.staff.list();
-            // Ensure branches loaded for the select
+            // Ensure branches + showrooms loaded for the workplace pickers
             if (branches.length === 0) branches = await window.CH.branches.list();
+            try { showroomsCache = await window.CH.showrooms.list(); } catch (_) {}
             // Warehouses power the Workplace=Warehouse dropdown for any staff.
             if (!warehousesCache || warehousesCache.length === 0) {
                 try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
@@ -2357,6 +2383,12 @@
         };
         if (!payload.name || !payload.email) { toast('Name and email are required.', 'error'); return; }
         if (isWarehousePosting && !warehouseId) { toast(role === 'warehouse_manager' ? 'Warehouse Manager must be assigned to a warehouse.' : 'Pick a warehouse for this staff, or set Workplace to Showroom.', 'error'); return; }
+        // Every non-super staff must have a workplace. Director & System Admin
+        // oversee all locations, so they're exempt.
+        if (!superRole && !isWarehousePosting && !payload.branch_id) {
+            toast('Choose a showroom for this staff (or set Workplace to Warehouse).', 'error');
+            return;
+        }
         if (!id && (!payload.password || payload.password.length < 6)) {
             toast('Password must be at least 6 characters.', 'error');
             return;
@@ -5539,7 +5571,7 @@
     // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions','theme'];
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','showrooms','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions','theme'];
     // Director gets everything except System Admin-only ops AND id-cards
     // by default; id-cards is dynamically allowed for Director at runtime
     // when the System Admin's feature flag is on (see switchView).
@@ -5669,6 +5701,21 @@
     function applyRoleVisibility() {
         const role = currentRole();
         document.body.dataset.role = role;
+    }
+
+    /* Setup gate: the platform isn't usable until at least one branch AND one
+       showroom exist. Until then, hide Add Product + every operational page
+       (CSS via body[data-setup="incomplete"]) and keep the user on the setup
+       pages (Branches → Showrooms). */
+    const SETUP_BLOCKED_VIEWS = ['products','showroom','new-sale','purchases','warehouse-stock',
+        'product-transfers','verify-invoice','move-stock','reports','drafts','extract',
+        'media','id-cards','invoice-templates','taxonomy','announcements','messages'];
+    function applySetupState() {
+        const ready = (branches && branches.length > 0) && (showroomsCache && showroomsCache.length > 0);
+        document.body.dataset.setup = ready ? 'ready' : 'incomplete';
+        if (!ready && SETUP_BLOCKED_VIEWS.includes(currentView)) {
+            switchView((branches && branches.length > 0) ? 'showrooms' : 'branches');
+        }
     }
 
     /* ---------- session_version check (force re-login on role change) */
@@ -7910,7 +7957,13 @@
             if (window.CH && window.CH.staff) {
                 staffList = await window.CH.staff.list();
             }
+            if (window.CH && window.CH.showrooms) {
+                showroomsCache = await window.CH.showrooms.list();
+            }
         } catch (_) { /* tables may not be migrated yet */ }
+        // Gate the platform until a branch + showroom exist (redirects off
+        // operational pages and hides Add Product / fundamental nav).
+        applySetupState();
         await loadProducts();
         checkStockAlertsLocal();
         await updateUnreadBadge();

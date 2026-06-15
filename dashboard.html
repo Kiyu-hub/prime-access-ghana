@@ -955,6 +955,31 @@
         body[data-flag-transfers="off"] #navTransfersBadge { display: none !important; }
         body[data-flag-move-stock="off"] .nav a[data-view="move-stock"] { display: none !important; }
 
+        /* Setup gate: until a branch AND a showroom exist, hide Add Product and
+           every operational page. Only the setup pages (Branches, Showrooms,
+           Warehouses, Staff) + System-Admin tools stay reachable. */
+        body[data-setup="incomplete"] .nav a[data-view="products"],
+        body[data-setup="incomplete"] .nav a[data-view="showroom"],
+        body[data-setup="incomplete"] .nav a[data-view="new-sale"],
+        body[data-setup="incomplete"] .nav a[data-view="purchases"],
+        body[data-setup="incomplete"] .nav a[data-view="warehouse-stock"],
+        body[data-setup="incomplete"] .nav a[data-view="product-transfers"],
+        body[data-setup="incomplete"] .nav a[data-view="verify-invoice"],
+        body[data-setup="incomplete"] .nav a[data-view="move-stock"],
+        body[data-setup="incomplete"] .nav a[data-view="reports"],
+        body[data-setup="incomplete"] .nav a[data-view="logs"],
+        body[data-setup="incomplete"] .nav a[data-view="drafts"],
+        body[data-setup="incomplete"] .nav a[data-view="extract"],
+        body[data-setup="incomplete"] .nav a[data-view="media"],
+        body[data-setup="incomplete"] .nav a[data-view="id-cards"],
+        body[data-setup="incomplete"] .nav a[data-view="invoice-templates"],
+        body[data-setup="incomplete"] .nav a[data-view="taxonomy"],
+        body[data-setup="incomplete"] .nav a[data-view="announcements"],
+        body[data-setup="incomplete"] .nav a[data-view="messages"],
+        body[data-setup="incomplete"] #addBtn,
+        body[data-setup="incomplete"] #importBtn,
+        body[data-setup="incomplete"] #exportBtn { display: none !important; }
+
         /* Dev-mode banner: top of the page, only when toggle is on Dev */
         body[data-mode="dev"] .main::before {
             content: "DEV MODE · sandbox data only · nothing here is visible to other users";
@@ -4520,6 +4545,14 @@
                     </svg>
                     <span>Branches</span>
                 </a>
+                <a class="admin-only" data-view="showrooms">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 9l9-6 9 6"/>
+                        <path d="M5 10v10h14V10"/>
+                        <rect x="9" y="14" width="6" height="6"/>
+                    </svg>
+                    <span>Showrooms</span>
+                </a>
                 <a class="admin-only" data-view="staff">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <circle cx="9" cy="8" r="3.5"/>
@@ -5460,14 +5493,6 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
                             <span>Create Branch</span>
                         </button>
-                        <button class="btn" id="addShowroomBtn" title="Needs a branch first">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"></path><path d="M5 10v10h14V10"></path><rect x="9" y="14" width="6" height="6"></rect></svg>
-                            <span>Add Showroom</span>
-                        </button>
-                        <button class="btn" id="addWarehouseFromBranchBtn" title="Needs a branch first">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"></path><path d="M3 21h18"></path><rect x="9" y="13" width="6" height="8"></rect></svg>
-                            <span>Add Warehouse</span>
-                        </button>
                     </div>
                 </div>
 
@@ -5510,9 +5535,39 @@
                         <p>Create a branch first — showrooms and warehouses are added under a branch.</p>
                     </div>
                 </div>
+                </div><!-- /#branchesContent -->
+            </section>
 
-                <h2 style="margin:28px 0 12px;font-size:1.05rem;">Showrooms</h2>
-                <div class="table-wrap">
+            <!-- ============================== -->
+            <!--          SHOWROOMS VIEW        -->
+            <!-- ============================== -->
+            <section class="view" id="view-showrooms">
+                <div class="topbar">
+                    <div class="topbar__title">
+                        <h1>Showrooms</h1>
+                        <p>Sales showrooms, each under a branch.</p>
+                    </div>
+                    <div class="topbar__actions" id="showroomTopbarActions">
+                        <button class="btn btn--primary" id="addShowroomBtn">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-6 9 6"></path><path d="M5 10v10h14V10"></path><rect x="9" y="14" width="6" height="6"></rect></svg>
+                            <span>Add Showroom</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="showroomNoBranchState" style="display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:14px; min-height:50vh;">
+                    <div class="empty__icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"></path><path d="M5 21V7l8-4v18"></path><path d="M19 21V11l-6-4"></path></svg>
+                    </div>
+                    <h2 style="margin:0;">Create a branch first</h2>
+                    <p style="margin:0; color:var(--c-ink-4); max-width:380px;">Showrooms belong to a branch. Create a branch, then add showrooms here.</p>
+                    <button class="btn btn--primary" id="showroomGoToBranchesBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"></rect><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+                        <span>Go to Branches</span>
+                    </button>
+                </div>
+
+                <div id="showroomsContent" class="table-wrap">
                     <div class="table-scroll">
                         <table class="tbl">
                             <thead>
@@ -5535,7 +5590,6 @@
                         <p>Add a showroom under a branch.</p>
                     </div>
                 </div>
-                </div><!-- /#branchesContent -->
             </section>
 
             <!-- ============================== -->
