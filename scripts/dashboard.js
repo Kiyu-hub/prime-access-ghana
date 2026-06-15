@@ -1403,21 +1403,6 @@
         }
     }
 
-    function populateWarehouseManagerSelect() {
-        if (!WAREHOUSE_ELS.manager) return;
-        const eligible = (staffList || []).filter((s) => s.role === 'warehouse_manager');
-        if (eligible.length === 0) {
-            WAREHOUSE_ELS.manager.innerHTML = '<option value="">— No warehouse managers yet — add one in Staff first —</option>';
-            WAREHOUSE_ELS.manager.disabled = true;
-        } else {
-            WAREHOUSE_ELS.manager.innerHTML = ['<option value="" disabled selected>Pick a warehouse manager</option>']
-                .concat(eligible.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}${s.email ? ' · ' + escapeHtml(s.email) : ''}</option>`))
-                .join('');
-            WAREHOUSE_ELS.manager.disabled = false;
-        }
-        WAREHOUSE_ELS.manager.required = true;
-    }
-
     function renderWarehouseBranchLinks(warehouseId) {
         if (!WAREHOUSE_ELS.links) return;
         const wh = warehousesCache.find((x) => x.id === warehouseId);
@@ -1449,7 +1434,6 @@
         WAREHOUSE_ELS.title.textContent = 'Add Warehouse';
         WAREHOUSE_ELS.editId.value = '';
         WAREHOUSE_ELS.form.reset();
-        populateWarehouseManagerSelect();
         renderWarehouseBranchLinks(null);
         WAREHOUSE_ELS.modal.classList.add('is-open');
         setTimeout(() => WAREHOUSE_ELS.name.focus(), 40);
@@ -1463,8 +1447,6 @@
         WAREHOUSE_ELS.name.value = w.name || '';
         WAREHOUSE_ELS.code.value = w.code || '';
         WAREHOUSE_ELS.location.value = w.location || '';
-        populateWarehouseManagerSelect();
-        WAREHOUSE_ELS.manager.value = w.manager_staff_id || '';
         renderWarehouseBranchLinks(id);
         WAREHOUSE_ELS.modal.classList.add('is-open');
     }
@@ -1489,12 +1471,7 @@
         const id = WAREHOUSE_ELS.editId.value;
         const name = WAREHOUSE_ELS.name.value.trim();
         const code = WAREHOUSE_ELS.code.value.trim();
-        const managerId = WAREHOUSE_ELS.manager.value || '';
         if (!name || !code) { toast('Name and code are required.', 'error'); return; }
-        if (!managerId) {
-            toast('Pick a warehouse manager. Create one in Staff first if none exists.', 'error');
-            return;
-        }
         // Collect linked branches + default
         const linkInputs = Array.from(WAREHOUSE_ELS.links.querySelectorAll('input[data-wh-link-branch]'));
         const defaultRadio = WAREHOUSE_ELS.links.querySelector('input[name="whDefaultBranch"]:checked');
@@ -1508,7 +1485,7 @@
                 await window.CH.warehouses.update(id, {
                     name, code,
                     location: WAREHOUSE_ELS.location.value.trim(),
-                    manager_staff_id: WAREHOUSE_ELS.manager.value || null,
+                    manager_staff_id: null,
                 });
                 await window.CH.warehouses.replaceBranchLinks(id, branch_links);
                 await window.CH.logs.record({ action: 'warehouse_updated', staff_id: session.id, staff_name: session.name, note: 'updated warehouse "' + name + '" (' + code + ')' });
@@ -1517,7 +1494,7 @@
                 await window.CH.warehouses.add({
                     name, code,
                     location: WAREHOUSE_ELS.location.value.trim(),
-                    manager_staff_id: WAREHOUSE_ELS.manager.value || null,
+                    manager_staff_id: null,
                     branch_links,
                 });
                 await window.CH.logs.record({ action: 'warehouse_created', staff_id: session.id, staff_name: session.name, note: 'created warehouse "' + name + '" (' + code + ')' });
@@ -1781,8 +1758,11 @@
     }
 
     function renderBranches() {
-        // Only the Director / System Admin can add branches.
-        if (els.addBranchBtn) els.addBranchBtn.style.display = isSuperRole(currentRole()) ? '' : 'none';
+        // Only the Director / System Admin can add showrooms or warehouses.
+        const _canManage = isSuperRole(currentRole());
+        if (els.addBranchBtn) els.addBranchBtn.style.display = _canManage ? '' : 'none';
+        const _addWhBtn = document.getElementById('addWarehouseFromBranchBtn');
+        if (_addWhBtn) _addWhBtn.style.display = _canManage ? '' : 'none';
         if (branches.length === 0) {
             els.branchesBody.innerHTML = '';
             els.branchesEmpty.style.display = 'block';
@@ -1838,9 +1818,13 @@
     });
 
     els.addBranchBtn.addEventListener('click', () => openBranchAdd());
+    {
+        const addWhFromBranch = document.getElementById('addWarehouseFromBranchBtn');
+        if (addWhFromBranch) addWhFromBranch.addEventListener('click', () => openWarehouseAdd());
+    }
 
     function openBranchAdd() {
-        els.branchModalTitle.textContent = 'Add Branch';
+        els.branchModalTitle.textContent = 'Add Showroom';
         els.branchEditId.value = '';
         els.branchForm.reset();
         els.branchModal.classList.add('is-open');
@@ -1850,7 +1834,7 @@
     function openBranchEdit(id) {
         const b = branches.find((x) => x.id === id);
         if (!b) return;
-        els.branchModalTitle.textContent = 'Edit Branch';
+        els.branchModalTitle.textContent = 'Edit Showroom';
         els.branchEditId.value = id;
         els.branchName.value = b.name || '';
         els.branchLocation.value = b.location || '';
