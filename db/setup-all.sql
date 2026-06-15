@@ -7,6 +7,7 @@
 -- Seeded super account = SYSTEM ADMIN (full access). CHANGE password after first sign-in:
 --   email:    director@primeaccessgh.com
 --   password: prime@2026
+-- No default branch/warehouse — create them in-app as Director/System Admin.
 -- ============================================================
 
 
@@ -316,22 +317,20 @@ left join public.branches b on b.id = s.branch_id;
 grant select on public.staff_view to anon, authenticated;
 
 -- ------------------------------------------------------------
--- SEED: first branch + director account
--- Default director credentials (CHANGE THESE FROM THE UI AFTER FIRST LOGIN):
+-- SEED: System Admin account ONLY.
+-- No default branch (showroom) or warehouse is created — the Director /
+-- System Admin must create those in-app. The System Admin needs no branch.
+-- Default credentials (CHANGE THESE FROM THE UI AFTER FIRST LOGIN):
 --   email:    director@primeaccessgh.com
 --   password: prime@2026
 -- ------------------------------------------------------------
-insert into public.branches (name, location)
-values ('Head Office', 'Accra')
-on conflict (name) do nothing;
-
 insert into public.staff (email, password_hash, name, role, branch_id, is_admin)
 select
     'director@primeaccessgh.com',
     crypt('prime@2026', gen_salt('bf', 10)),
     'System Admin',
     'system_manager',
-    (select id from public.branches where name = 'Head Office'),
+    null,
     true
 where not exists (
     select 1 from public.staff where lower(email) = 'director@primeaccessgh.com'
