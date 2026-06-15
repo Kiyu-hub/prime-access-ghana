@@ -124,9 +124,9 @@
             if (error) throw error;
             return data || [];
         },
-        async create({ name, branch_id, location }) {
+        async create({ name, branch_id, location, warehouse_id }) {
             const { data, error } = await client.from('showrooms')
-                .insert({ name, branch_id, location: location || null })
+                .insert({ name, branch_id, location: location || null, warehouse_id: warehouse_id || null })
                 .select().single();
             if (error) throw error;
             return data;
@@ -532,6 +532,19 @@
                 }));
                 const { error: linkErr } = await client.from('branch_warehouses').insert(rows);
                 if (linkErr) throw linkErr;
+            }
+            // Every warehouse auto-creates a paired showroom: products are stored
+            // in the warehouse and surfaced in this showroom.
+            const defLink = (branch_links || []).find((l) => l.is_default) || (branch_links || [])[0];
+            if (defLink && defLink.branch_id) {
+                try {
+                    await client.from('showrooms').insert({
+                        name: name + ' Showroom',
+                        branch_id: defLink.branch_id,
+                        warehouse_id: wh.id,
+                        location: location || null,
+                    });
+                } catch (e) { console.warn('auto showroom create failed:', e); }
             }
             return wh;
         },

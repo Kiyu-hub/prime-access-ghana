@@ -724,6 +724,17 @@
             return;
         }
 
+        // Products live in the branch's default warehouse (and surface in its
+        // showroom). Keep an existing product's warehouse on edit; assign the
+        // branch default on create.
+        const _existingProd = editId ? products.find((p) => p.id === editId) : null;
+        if (!warehousesCache || !warehousesCache.length) {
+            try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
+        }
+        const warehouseId = editId
+            ? (_existingProd ? _existingProd.warehouse_id : null)
+            : defaultWarehouseIdForBranch(branchId);
+
         const data = {
             id: editId || '',
             name: $('#prodName').value.trim() || null,
@@ -741,6 +752,7 @@
             supplier: $('#supplier').value.trim() || null,
             image_url: currentImageUrl,
             branch_id: branchId,
+            warehouse_id: warehouseId,
             added_by: session.id,
             added_by_name: session.name,
         };
@@ -1432,6 +1444,15 @@
         });
     }
 
+    // The branch's default warehouse (products are placed here on creation).
+    function defaultWarehouseIdForBranch(branchId) {
+        if (!branchId) return null;
+        const list = warehousesCache || [];
+        const def = list.find((w) => (w.branches || []).some((b) => b.branch_id === branchId && b.is_default));
+        const any = def || list.find((w) => (w.branches || []).some((b) => b.branch_id === branchId));
+        return any ? any.id : null;
+    }
+
     // Auto-generate the next warehouse code (WH-001, WH-002, …) — no manual entry.
     function genWarehouseCode() {
         let max = 0;
@@ -2004,10 +2025,18 @@
         }
     });
 
+    function setBranchWarehouseFieldVisible(show) {
+        const f = document.getElementById('branchWarehouseField');
+        const inp = document.getElementById('branchWarehouseName');
+        if (f) f.style.display = show ? '' : 'none';
+        if (inp) inp.required = !!show;
+    }
+
     function openBranchAdd() {
         els.branchModalTitle.textContent = 'Create Branch';
         els.branchEditId.value = '';
         els.branchForm.reset();
+        setBranchWarehouseFieldVisible(true);   // a warehouse is required on create
         els.branchModal.classList.add('is-open');
         setTimeout(() => els.branchName.focus(), 50);
     }
@@ -2019,12 +2048,13 @@
         els.branchEditId.value = id;
         els.branchName.value = b.name || '';
         els.branchLocation.value = b.location || '';
+        setBranchWarehouseFieldVisible(false);  // warehouse only created with a new branch
         els.branchModal.classList.add('is-open');
     }
 
     els.branchForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        // Branches (showrooms) may only be created/edited by the Director or System Admin.
+        // Branches may only be created/edited by the Director or System Admin.
         if (!isSuperRole(currentRole())) {
             toast('Only the Director or System Admin can manage branches.', 'error');
             return;
@@ -2032,8 +2062,11 @@
         const id = els.branchEditId.value;
         const name = els.branchName.value.trim();
         const location = els.branchLocation.value.trim();
+        const whName = (document.getElementById('branchWarehouseName') || {}).value || '';
+        const warehouseName = whName.trim();
         const manager_staff_id = null; // managers are assigned later from Staff
         if (!name) { toast('Branch name is required.', 'error'); return; }
+        if (!id && !warehouseName) { toast('A warehouse name is required — every branch must have a warehouse.', 'error'); return; }
         try {
             if (id) {
                 await window.CH.branches.rename(id, name, location, manager_staff_id);
@@ -2042,7 +2075,17 @@
             } else {
                 const created = await window.CH.branches.create(name, location, manager_staff_id);
                 window.CH.logs.record({ action: 'branch_created', branch_id: created && created.id, branch_name: name, staff_id: session.id, staff_name: session.name, note: location ? 'location: ' + location : null });
-                toast('Branch added.', 'success');
+                // Required warehouse for the new branch — auto-creates its showroom too.
+                try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
+                await window.CH.warehouses.add({
+                    name: warehouseName,
+                    code: genWarehouseCode(),
+                    location: location || null,
+                    manager_staff_id: null,
+                    branch_links: [{ branch_id: created.id, is_default: true }],
+                });
+                window.CH.logs.record({ action: 'warehouse_created', staff_id: session.id, staff_name: session.name, note: 'created warehouse "' + warehouseName + '" with branch "' + name + '"' });
+                toast('Branch, warehouse & showroom created.', 'success');
             }
             els.branchModal.classList.remove('is-open');
             await loadBranches();
