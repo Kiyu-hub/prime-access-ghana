@@ -28,6 +28,7 @@ const SHELL = [
     './scripts/cloudinary.js',
     './scripts/auth.js',
     './scripts/dashboard.js',
+    './scripts/theme.js',
     './scripts/ui.js',
     './scripts/install.js',
     './scripts/pdf-export.js',
