@@ -596,6 +596,20 @@
         els.editId.value = '';
         els.form.reset();
         populateProductFormDropdowns();
+        // Supers have no fixed branch — let them pick which branch the product
+        // belongs to. Branch staff/managers use their own branch (field hidden).
+        const pbField = document.getElementById('prodBranchField');
+        const pbSel = document.getElementById('prodBranch');
+        if (pbField && pbSel) {
+            if (isSuperRole()) {
+                pbSel.innerHTML = ['<option value="" disabled selected>Select branch</option>']
+                    .concat((branches || []).map((b) => `<option value="${b.id}">${escapeHtml(b.name)}</option>`)).join('');
+                if (branches && branches.length === 1) pbSel.value = branches[0].id;
+                pbField.style.display = '';
+            } else {
+                pbField.style.display = 'none';
+            }
+        }
         currentImageUrl = null;
         els.previewBox.classList.remove('is-shown');
         els.uploadProgress.classList.remove('is-shown');
@@ -612,6 +626,8 @@
         }
         els.modalTitle.textContent = 'Edit Product · ' + (p.item_no || p.description || '');
         els.editId.value = id;
+        const pbFieldE = document.getElementById('prodBranchField');
+        if (pbFieldE) pbFieldE.style.display = 'none'; // branch is fixed on edit
         populateProductFormDropdowns();
         $('#prodName').value = p.name || '';
         $('#itemNo').value = p.item_no || '';
@@ -717,10 +733,10 @@
         }
         const branchId = editId
             ? (products.find((p) => p.id === editId)?.branch_id || session.branch_id)
-            : session.branch_id;
+            : (session.branch_id || (isSuperRole() ? ((document.getElementById('prodBranch') || {}).value || null) : null));
 
         if (!branchId) {
-            toast('No branch context. Ask the Director to assign you to a branch.', 'error');
+            toast(isSuperRole() ? 'Pick a branch for this product.' : 'No branch context. Ask the Director to assign you to a branch.', 'error');
             return;
         }
 
@@ -2152,15 +2168,17 @@
             ['branch_manager', 'Branch Manager'],
             ['warehouse_manager', 'Warehouse Manager'],
         ];
-        // Super-role options are normally assignable only by the System Admin.
-        // ALSO include them whenever the account being edited is itself a super
-        // role, so a super account can never silently lose its role: without the
-        // matching <option> the <select> value would fall back to 'staff' and a
-        // save would strip the role — locking the System Admin out of its own
-        // tools (dev mode, permissions, media, import) with no way back via UI.
-        if (currentRole() === 'system_manager' || editingRole === 'admin' || editingRole === 'system_manager') {
+        // Only the System Admin can see/assign the System Admin role. The
+        // Director may assign up to Director, never System Admin.
+        const viewer = currentRole();
+        if (viewer === 'system_manager') {
             roles.push(['admin', 'Director']);
             roles.push(['system_manager', 'System Admin']);
+        } else if (viewer === 'admin') {
+            roles.push(['admin', 'Director']);
+            // Edge: if somehow editing a System Admin account, keep the option so
+            // a save can't silently strip it. (Directors can't normally reach one.)
+            if (editingRole === 'system_manager') roles.push(['system_manager', 'System Admin']);
         }
         els.staffRole.innerHTML = roles.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
     }
@@ -2317,9 +2335,9 @@
         if (a2) a2.checked = false;
         const codeField = $('#staffCodeDisplay');
         if (codeField) codeField.value = '(generated on save)';
-        // Reset photo + start date
+        // Reset photo; default start date to today (the day created).
         setStaffPhotoUi('');
-        const sd = $('#staffStartedAt'); if (sd) sd.value = '';
+        const sd = $('#staffStartedAt'); if (sd) sd.value = new Date().toISOString().slice(0, 10);
         els.staffModal.classList.add('is-open');
         setTimeout(() => els.staffName.focus(), 50);
     }
@@ -4649,10 +4667,47 @@
         });
     }
 
+    // Director / System Admin can compose announcements right here (works on
+    // mobile — no Messages two-pane needed).
+    {
+        const annComposeBtn = document.getElementById('annComposeBtn');
+        const annModal = document.getElementById('announcementModal');
+        const annForm = document.getElementById('announcementForm');
+        if (annComposeBtn && annModal) {
+            annComposeBtn.addEventListener('click', () => {
+                document.getElementById('annModalTitle').value = '';
+                document.getElementById('annModalBody').value = '';
+                annModal.classList.add('is-open');
+                setTimeout(() => document.getElementById('annModalBody').focus(), 50);
+            });
+        }
+        if (annForm) {
+            annForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                if (!isSuperRole(currentRole())) { toast('Only the Director or System Admin can post announcements.', 'error'); return; }
+                const title = document.getElementById('annModalTitle').value.trim();
+                const body = document.getElementById('annModalBody').value.trim();
+                if (!body) { toast('Type your announcement first.', 'error'); return; }
+                try {
+                    await window.CH.announcements.post({ title, body, sender_id: session.id, sender_name: session.name });
+                    window.CH.logs.record({ action: 'announcement', staff_id: session.id, staff_name: session.name, note: (title ? '[' + title + '] ' : '') + body });
+                    toast('Announcement posted to all staff.', 'success');
+                    annModal.classList.remove('is-open');
+                    await loadAnnouncements();
+                } catch (err) {
+                    console.error(err);
+                    toast(isMissingTableError(err) ? 'Announcements are not enabled yet.' : ('Could not post: ' + (err.message || 'unknown')), 'error');
+                }
+            });
+        }
+    }
+
     /* ============================================================
        ANNOUNCEMENTS — staff view (read), badge, realtime
        ============================================================ */
     async function loadAnnouncements() {
+        const annComposeBtn = document.getElementById('annComposeBtn');
+        if (annComposeBtn) annComposeBtn.style.display = isSuperRole(currentRole()) ? '' : 'none';
         try {
             const list = await window.CH.announcements.list(50).catch((e) => { if (isMissingTableError(e)) return []; throw e; });
             announcementsCache = list;

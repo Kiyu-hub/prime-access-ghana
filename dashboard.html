@@ -6001,6 +6001,12 @@
                             <p id="announcementsHeading" style="margin:2px 0 0;">Messages from the Director.</p>
                         </div>
                     </div>
+                    <div class="topbar__actions">
+                        <button class="btn btn--primary" id="annComposeBtn" style="display:none;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span>New Announcement</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="ann-feed" id="announcementsList"></div>
@@ -6061,6 +6067,39 @@
     </div>
 
     <!-- ============================== -->
+    <!--      ANNOUNCEMENT MODAL        -->
+    <!-- ============================== -->
+    <div class="modal modal--sm" id="announcementModal" role="dialog" aria-modal="true">
+        <div class="modal__dialog">
+            <header class="modal__head">
+                <div>
+                    <h3>New Announcement</h3>
+                    <p>Posted to all staff in their Announcements page.</p>
+                </div>
+                <button class="modal__close" data-close="announcementModal" aria-label="Close">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </header>
+            <form id="announcementForm">
+                <div class="modal__body">
+                    <div class="field--full">
+                        <label for="annModalTitle">Title <span class="hint">(optional)</span></label>
+                        <input type="text" id="annModalTitle" placeholder="e.g. Stock-taking on Friday" />
+                    </div>
+                    <div class="field--full">
+                        <label for="annModalBody">Message<span class="req">*</span></label>
+                        <textarea id="annModalBody" rows="5" placeholder="Write your announcement…" required></textarea>
+                    </div>
+                </div>
+                <footer class="modal__foot">
+                    <button type="button" class="btn" data-close="announcementModal">Cancel</button>
+                    <button type="submit" class="btn btn--primary">Send to all staff</button>
+                </footer>
+            </form>
+        </div>
+    </div>
+
+    <!-- ============================== -->
     <!--   ADD / EDIT PRODUCT MODAL     -->
     <!-- ============================== -->
     <div class="modal" id="productModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
@@ -6078,6 +6117,12 @@
             <form id="productForm">
                 <div class="modal__body">
                     <input type="hidden" id="editId" />
+
+                    <div class="field--full" id="prodBranchField" style="display:none;">
+                        <label for="prodBranch">Branch<span class="req">*</span></label>
+                        <select id="prodBranch"></select>
+                        <small class="hint">As Director / System Admin, choose which branch this product belongs to.</small>
+                    </div>
 
                     <div class="field--full">
                         <label for="prodName">Product name <span class="hint">(optional)</span></label>
