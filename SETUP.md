@@ -41,13 +41,13 @@ Five tasks. ~15 minutes total. Do them in this order.
 5. You should see `Success. No rows returned.` plus a few notices. That's expected.
 6. To verify, paste this and run:
    ```sql
-   select * from verify_login('director@primeaccessgh.com', 'prime@2026');
+   select * from verify_login('blanc.69458@gmail.com', 'prime@2026');
    ```
    You should get back one row with `is_admin = true`.
 
-**Default Director login (CHANGE THE PASSWORD after first sign-in from Admin → Staff):**
-- Email: `director@primeaccessgh.com`
-- Password: `prime@2026`
+**Default logins (CHANGE THE PASSWORDS after first sign-in from Admin → Staff):**
+- System Admin (owner): `blanc.69458@gmail.com` / `prime@2026`
+- Director: `director@primeaccessgh.com` / `prime@2026`
 
 ---
 
@@ -109,7 +109,7 @@ Push to GitHub and connect to **Vercel** (https://vercel.com/new) or **Netlify**
 
 **"Login failed" with the seeded credentials:**
 - The schema seed inserts the email in lowercase. Make sure step 3 finished without errors.
-- Re-run `select * from verify_login('director@primeaccessgh.com', 'prime@2026');` in SQL Editor. If it returns 0 rows, the seed didn't run — re-run `db/setup-all.sql`.
+- Re-run `select * from verify_login('blanc.69458@gmail.com', 'prime@2026');` in SQL Editor. If it returns 0 rows, the seed didn't run — re-run `db/setup-all.sql`.
 
 **Cloudinary upload fails with `Upload preset must be in whitelist`:**
 - Your preset is still set to **Signed**. Edit it → Signing Mode → **Unsigned** → Save.

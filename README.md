@@ -144,11 +144,11 @@ See **`SETUP.md`** for the click-by-click walkthrough. Headlines:
 4. Create a Cloudinary **unsigned** upload preset and paste its name into `config.js`.
 5. Serve the folder — any static host works (`python -m http.server`, `npx serve`, Netlify drag-and-drop, Vercel, GitHub Pages).
 
-Default Director login (change immediately):
+Default logins (change immediately):
 
 ```
-email:    director@primeaccessgh.com
-password: prime@2026
+System Admin (owner): blanc.69458@gmail.com / prime@2026
+Director:             director@primeaccessgh.com / prime@2026
 ```
 
 ---

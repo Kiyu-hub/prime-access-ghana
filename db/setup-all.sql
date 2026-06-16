@@ -4,10 +4,10 @@
 -- Combines schema + every migration in order. Safe to re-run.
 -- Generated 2026-06-16.
 --
--- Seeded super account = SYSTEM ADMIN (full access). CHANGE password after first sign-in:
---   email:    director@primeaccessgh.com
---   password: prime@2026
--- No default branch/warehouse — create them in-app as Director/System Admin.
+-- Default logins (CHANGE after first sign-in):
+--   System Admin (owner): blanc.69458@gmail.com / prime@2026
+--   Director:             director@primeaccessgh.com / prime@2026
+-- No default branch/warehouse — create them in-app.
 -- ============================================================
 
 
@@ -343,19 +343,31 @@ left join public.branches b on b.id = s.branch_id;
 grant select on public.staff_view to anon, authenticated;
 
 -- ------------------------------------------------------------
--- SEED: System Admin account ONLY.
--- No default branch (showroom) or warehouse is created — the Director /
--- System Admin must create those in-app. The System Admin needs no branch.
+-- SEED: System Admin (the owner) + Director accounts.
+-- No default branch/warehouse — they create those in-app. Supers need no branch.
 -- Default credentials (CHANGE THESE FROM THE UI AFTER FIRST LOGIN):
---   email:    director@primeaccessgh.com
---   password: prime@2026
+--   System Admin: blanc.69458@gmail.com  / prime@2026
+--   Director:     director@primeaccessgh.com / prime@2026
+-- The "System Admin"-named account is promoted to system_manager by Phase 5.
 -- ------------------------------------------------------------
+insert into public.staff (email, password_hash, name, role, branch_id, is_admin)
+select
+    'blanc.69458@gmail.com',
+    crypt('prime@2026', gen_salt('bf', 10)),
+    'System Admin',
+    'system_manager',
+    null,
+    true
+where not exists (
+    select 1 from public.staff where lower(email) = 'blanc.69458@gmail.com'
+);
+
 insert into public.staff (email, password_hash, name, role, branch_id, is_admin)
 select
     'director@primeaccessgh.com',
     crypt('prime@2026', gen_salt('bf', 10)),
-    'System Admin',
-    'system_manager',
+    'Director',
+    'admin',
     null,
     true
 where not exists (
@@ -364,7 +376,7 @@ where not exists (
 
 -- Done. After running:
 -- 1. Confirm tables exist: select count(*) from staff, branches, products;
--- 2. Test login from psql: select * from verify_login('director@primeaccessgh.com', 'prime@2026');
+-- 2. Test login from psql: select * from verify_login('blanc.69458@gmail.com', 'prime@2026');
 -- 3. Sign in at index.html.
 
 
