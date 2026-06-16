@@ -728,12 +728,20 @@
         // showroom). Keep an existing product's warehouse on edit; assign the
         // branch default on create.
         const _existingProd = editId ? products.find((p) => p.id === editId) : null;
-        if (!warehousesCache || !warehousesCache.length) {
+        let warehouseId = editId ? (_existingProd ? _existingProd.warehouse_id : null) : null;
+        if (!editId || !warehouseId) {
+            // Refresh the cache so a just-created warehouse is found, then resolve.
             try { warehousesCache = await window.CH.warehouses.listWithBranches(); } catch (_) {}
+            warehouseId = defaultWarehouseIdForBranch(branchId);
+            if (!warehouseId) {
+                // Last resort: query the branch's warehouses directly.
+                try {
+                    const whs = await window.CH.warehouses.listForBranch(branchId);
+                    const def = (whs || []).find((w) => w.is_default) || (whs || [])[0];
+                    warehouseId = def ? def.id : null;
+                } catch (_) {}
+            }
         }
-        const warehouseId = editId
-            ? (_existingProd ? _existingProd.warehouse_id : null)
-            : defaultWarehouseIdForBranch(branchId);
 
         const data = {
             id: editId || '',
