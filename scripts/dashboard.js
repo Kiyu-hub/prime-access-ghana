@@ -378,6 +378,7 @@
         if (view === 'invoice-templates') loadInvoiceTemplates();
         if (view === 'new-sale') initNewSale();
         if (view === 'purchases') loadPurchases();
+        if (view === 'all-sales') loadAllSales();
         if (view === 'verify-invoice') initVerifyInvoice();
         if (view === 'permissions') renderActivePermTab();
         if (view === 'theme' && window.PAGTheme) window.PAGTheme.renderPage(document.getElementById('themePageHost'));
@@ -5704,7 +5705,7 @@
     const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions' && v !== 'theme');
     // Staff views depend on their workplace (showroom vs warehouse).
     const STAFF_SHOWROOM_VIEWS  = ['products','showroom','reports','messages','announcements','new-sale','purchases'];
-    const STAFF_WAREHOUSE_VIEWS = ['warehouse-stock','purchases','reports','messages','announcements','product-transfers','verify-invoice'];
+    const STAFF_WAREHOUSE_VIEWS = ['warehouse-stock','all-sales','reports','messages','announcements','product-transfers','verify-invoice'];
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
@@ -6794,6 +6795,176 @@
             if (m) name = m.name || '';
         }
         return name ? (escapeHtml(c) + ' · ' + escapeHtml(name)) : escapeHtml(c);
+    }
+
+    /* ============================================================
+       ALL SALES — warehouse-facing fulfilment view (no financials)
+       ============================================================ */
+    let allSalesCache = [];
+    let allSalesTab = 'pending';
+
+    function allSalesScopedOrders(all) {
+        const role = currentRole();
+        if (isSuperRole(role)) return all;
+        // Warehouse manager: orders for warehouses they manage.
+        if (role === 'warehouse_manager') {
+            const scope = getManagedWarehouseIds();
+            if (scope === 'ALL') return all;
+            const set = new Set(scope);
+            return all.filter((o) => set.has(o.warehouse_id));
+        }
+        // Warehouse staff: orders for their branch.
+        const branchScope = getManagedBranchIds();
+        if (branchScope === 'ALL') return all;
+        const bset = new Set(branchScope);
+        if (session && session.branch_id) bset.add(session.branch_id);
+        return all.filter((o) => bset.has(o.branch_id));
+    }
+
+    async function loadAllSales() {
+        const grid = document.getElementById('allSalesGrid');
+        if (!grid) return;
+        if (!window.CH || !window.CH.customerOrders) {
+            grid.innerHTML = '';
+            document.getElementById('allSalesEmpty').style.display = 'block';
+            return;
+        }
+        if (!staffList || staffList.length === 0) { try { staffList = await window.CH.staff.list(); } catch (_) {} }
+        try {
+            const all = await window.CH.customerOrders.list({ limit: 500 });
+            allSalesCache = allSalesScopedOrders(all);
+            renderAllSales();
+            updateAllSalesBadge();
+        } catch (err) {
+            console.error(err);
+            if (isMissingTableError(err)) {
+                grid.innerHTML = '';
+                document.getElementById('allSalesEmpty').style.display = 'block';
+            } else {
+                toast('Could not load sales: ' + (err.message || 'unknown'), 'error');
+            }
+        }
+    }
+
+    function renderAllSales() {
+        const grid = document.getElementById('allSalesGrid');
+        const empty = document.getElementById('allSalesEmpty');
+        const banner = document.getElementById('allSalesReceiveBanner');
+        if (!grid) return;
+        const pending = allSalesCache.filter((o) => o.status === 'pending');
+        // Receive banner — how many sales await verification/dispatch.
+        if (banner) {
+            if (pending.length > 0) {
+                banner.style.display = '';
+                banner.innerHTML = `<strong>${pending.length}</strong> sale${pending.length === 1 ? '' : 's'} to receive — open one to copy its invoice code, then verify to dispatch.`;
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+        let list = allSalesCache;
+        if (allSalesTab === 'pending') list = pending;
+        else if (allSalesTab === 'fulfilled') list = allSalesCache.filter((o) => o.status === 'fulfilled');
+        if (list.length === 0) { grid.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
+        if (empty) empty.style.display = 'none';
+        grid.innerHTML = list.map((o) => {
+            const statusPill = o.status === 'fulfilled' ? 'pill--pt-received' : o.status === 'cancelled' ? 'pill--pt-cancelled' : 'pill--pt-pending';
+            const statusLabel = o.status === 'fulfilled' ? 'Completed' : o.status === 'cancelled' ? 'Cancelled' : 'Pending';
+            const itemsCount = Number(o.items_count) || 0;
+            const initiator = o.initiator || {};
+            // NOTE: deliberately NO money/payment shown to warehouse users.
+            return `<article class="prod-card all-sale-card" data-all-sale="${o.id}" style="cursor:pointer;">
+                <div class="prod-card__body">
+                    <div class="prod-card__itemno">${escapeHtml(o.code || '')}</div>
+                    <h3 class="prod-card__title">${escapeHtml(o.client_name || 'Walk-in customer')}</h3>
+                    <div class="prod-card__meta">
+                        <span class="pill ${statusPill}">${statusLabel}</span>
+                        <span class="pill">${itemsCount} ${itemsCount === 1 ? 'item' : 'items'}</span>
+                    </div>
+                    <div class="prod-card__meta" style="color:var(--c-ink-4);font-size:0.8rem;">
+                        ${relTime(o.created_at)} · by ${staffLabelForCode(initiator.staff_code, initiator.name)}
+                    </div>
+                </div>
+            </article>`;
+        }).join('');
+    }
+
+    async function openAllSaleDetail(id) {
+        const o = allSalesCache.find((x) => x.id === id);
+        const body = document.getElementById('allSalesModalBody');
+        const modal = document.getElementById('allSalesModal');
+        if (!o || !body || !modal) return;
+        document.getElementById('allSalesModalTitle').textContent = o.code || 'Sale';
+        document.getElementById('allSalesModalSub').textContent = (o.status === 'fulfilled' ? 'Completed' : o.status === 'cancelled' ? 'Cancelled' : 'Pending') + ' sale';
+        const invoice = o.invoice_code || '—';
+        // Pull line items (no prices for warehouse users).
+        let itemsHtml = '<div style="color:var(--c-ink-5);font-size:0.85rem;">Loading items…</div>';
+        body.innerHTML = `
+            <div class="field--full" style="margin-bottom:12px;">
+                <label>Invoice code <span class="hint">(for verification)</span></label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="allSaleInvoiceCode" value="${escapeAttr(invoice)}" readonly style="font-family:var(--f-mono);font-weight:700;letter-spacing:0.06em;" />
+                    <button type="button" class="btn btn--primary" id="allSaleCopyBtn">Copy</button>
+                </div>
+            </div>
+            <div class="pdetail__row"><span>Customer</span><b>${escapeHtml(o.client_name || 'Walk-in')}</b></div>
+            ${o.client_phone ? `<div class="pdetail__row"><span>Phone</span><b>${escapeHtml(o.client_phone)}</b></div>` : ''}
+            <div class="pdetail__row"><span>Status</span><b>${o.status === 'fulfilled' ? 'Completed' : o.status === 'cancelled' ? 'Cancelled' : 'Pending'}</b></div>
+            <div class="pdetail__row"><span>Recorded</span><b>${relTime(o.created_at)}</b></div>
+            <h3 style="margin:14px 0 6px;font-size:0.95rem;">Items</h3>
+            <div id="allSaleItems">${itemsHtml}</div>`;
+        modal.classList.add('is-open');
+        const copyBtn = document.getElementById('allSaleCopyBtn');
+        if (copyBtn) copyBtn.addEventListener('click', () => {
+            const inp = document.getElementById('allSaleInvoiceCode');
+            if (inp) {
+                inp.select();
+                try { navigator.clipboard.writeText(inp.value); } catch (_) { document.execCommand('copy'); }
+                toast('Invoice code copied.', 'success');
+            }
+        });
+        // Load items (qty + product, no money).
+        try {
+            const full = await window.CH.customerOrders.get(id);
+            const rows = (full.items || []).map((it) => `
+                <div class="pdetail__row"><span>${escapeHtml(it.item_no_snap || it.description_snap || 'Item')}</span><b>×${it.qty}</b></div>`).join('');
+            const el = document.getElementById('allSaleItems');
+            if (el) el.innerHTML = rows || '<div style="color:var(--c-ink-5);font-size:0.85rem;">No items.</div>';
+        } catch (_) {
+            const el = document.getElementById('allSaleItems');
+            if (el) el.innerHTML = '<div style="color:var(--c-ink-5);font-size:0.85rem;">Could not load items.</div>';
+        }
+    }
+
+    async function updateAllSalesBadge() {
+        const badge = document.getElementById('navAllSalesBadge');
+        if (!badge) return;
+        try {
+            let pendingCount;
+            if (allSalesCache && allSalesCache.length) {
+                pendingCount = allSalesCache.filter((o) => o.status === 'pending').length;
+            } else {
+                const all = await window.CH.customerOrders.list({ status: 'pending', limit: 200 });
+                pendingCount = allSalesScopedOrders(all).length;
+            }
+            if (pendingCount > 0) { badge.textContent = pendingCount; badge.hidden = false; }
+            else { badge.hidden = true; }
+        } catch (_) { badge.hidden = true; }
+    }
+
+    {
+        const grid = document.getElementById('allSalesGrid');
+        if (grid) grid.addEventListener('click', (e) => {
+            const card = e.target.closest('[data-all-sale]');
+            if (card) openAllSaleDetail(card.dataset.allSale);
+        });
+        const tabs = document.getElementById('allSalesTabs');
+        if (tabs) tabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('[data-allsales-tab]');
+            if (!btn) return;
+            allSalesTab = btn.dataset.allsalesTab;
+            tabs.querySelectorAll('[data-allsales-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
+            renderAllSales();
+        });
     }
 
     // ---- Verify Invoice view ------------------------------------
@@ -8144,6 +8315,18 @@
         if (r === 'system_manager') await updateDraftsBadge();
         // Announcement badge shows for everyone EXCEPT Director
         if (r !== 'admin') await updateAnnouncementBadge();
+        // All Sales pending-counter for warehouse-side users + live updates.
+        if (isWarehouseSideUser()) {
+            try { await updateAllSalesBadge(); } catch (_) {}
+            if (window.CH.customerOrders && window.CH.customerOrders.subscribe) {
+                try {
+                    window.CH.customerOrders.subscribe(() => {
+                        updateAllSalesBadge();
+                        if (currentView === 'all-sales') loadAllSales();
+                    });
+                } catch (_) {}
+            }
+        }
         // Product Transfers badge — load once at boot, then realtime keeps it fresh
         try { await loadProductTransfers(); } catch (_) { /* table not migrated yet */ }
         setupTransfersRealtime();
