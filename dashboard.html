@@ -5232,6 +5232,16 @@
                     <button class="btn btn--ghost" data-allsales-tab="fulfilled">Completed</button>
                     <button class="btn btn--ghost" data-allsales-tab="all">All</button>
                 </div>
+                <div class="all-sales-filters" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
+                    <input type="search" id="allSalesSearch" placeholder="Search by customer name…" autocomplete="off" style="flex:1;min-width:200px;" />
+                    <select id="allSalesDays" style="max-width:200px;">
+                        <option value="0">All dates</option>
+                        <option value="1">Today</option>
+                        <option value="7">Last 7 days</option>
+                        <option value="30">Last 30 days</option>
+                        <option value="90">Last 90 days</option>
+                    </select>
+                </div>
                 <div id="allSalesGrid" class="showroom-grid"></div>
                 <div class="empty" id="allSalesEmpty" style="display:none;">
                     <div class="empty__icon">

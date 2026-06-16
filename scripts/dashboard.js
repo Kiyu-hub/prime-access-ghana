@@ -5712,9 +5712,10 @@
         // Branch Manager: full branch-wide ops for their branch + can manage
         // (create) staff. Sees both showroom and warehouse of their branch.
         branch_manager:    ['products','showroom','warehouse-stock','warehouses','reports','messages','announcements','logs','product-transfers','new-sale','purchases','staff'],
-        // Warehouse Manager: warehouse only — stock + transfers + verify.
-        // No new-sale; Purchases shown (to see pending sales). Money hidden.
-        warehouse_manager: STAFF_WAREHOUSE_VIEWS,
+        // Warehouse Manager: warehouse only — stock + all-sales + verify.
+        // NO product transfers (that's for warehouse staff). No new-sale.
+        // Money hidden everywhere.
+        warehouse_manager: ['warehouse-stock','all-sales','reports','messages','announcements','verify-invoice'],
         // Staff default = showroom side (overridden by workplace below).
         staff:             STAFF_SHOWROOM_VIEWS,
     };
@@ -6802,6 +6803,8 @@
        ============================================================ */
     let allSalesCache = [];
     let allSalesTab = 'pending';
+    let allSalesSearch = '';
+    let allSalesDays = 0;
 
     function allSalesScopedOrders(all) {
         const role = currentRole();
@@ -6864,25 +6867,41 @@
         let list = allSalesCache;
         if (allSalesTab === 'pending') list = pending;
         else if (allSalesTab === 'fulfilled') list = allSalesCache.filter((o) => o.status === 'fulfilled');
+        // Search by customer name.
+        const q = (allSalesSearch || '').trim().toLowerCase();
+        if (q) list = list.filter((o) => (o.client_name || '').toLowerCase().includes(q));
+        // Filter by days window.
+        if (allSalesDays > 0) {
+            const cutoff = Date.now() - allSalesDays * 24 * 60 * 60 * 1000;
+            list = list.filter((o) => new Date(o.created_at).getTime() >= cutoff);
+        }
         if (list.length === 0) { grid.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
         if (empty) empty.style.display = 'none';
         grid.innerHTML = list.map((o) => {
-            const statusPill = o.status === 'fulfilled' ? 'pill--pt-received' : o.status === 'cancelled' ? 'pill--pt-cancelled' : 'pill--pt-pending';
-            const statusLabel = o.status === 'fulfilled' ? 'Completed' : o.status === 'cancelled' ? 'Cancelled' : 'Pending';
             const itemsCount = Number(o.items_count) || 0;
             const initiator = o.initiator || {};
+            const isDone = o.status === 'fulfilled';
+            const isCancelled = o.status === 'cancelled';
+            // Completed sales carry a bold COMPLETED tag and are NOT actionable.
+            const statusTag = isDone
+                ? '<span class="pill pill--pt-received" style="font-weight:800;letter-spacing:0.04em;">✓ COMPLETED</span>'
+                : isCancelled
+                    ? '<span class="pill pill--pt-cancelled" style="font-weight:800;">CANCELLED</span>'
+                    : '<span class="pill pill--pt-pending">Pending</span>';
+            const actionable = !isDone && !isCancelled;
             // NOTE: deliberately NO money/payment shown to warehouse users.
-            return `<article class="prod-card all-sale-card" data-all-sale="${o.id}" style="cursor:pointer;">
+            return `<article class="prod-card all-sale-card${actionable ? '' : ' all-sale-card--done'}" ${actionable ? `data-all-sale="${o.id}" style="cursor:pointer;"` : 'style="opacity:0.85;"'}>
                 <div class="prod-card__body">
                     <div class="prod-card__itemno">${escapeHtml(o.code || '')}</div>
                     <h3 class="prod-card__title">${escapeHtml(o.client_name || 'Walk-in customer')}</h3>
                     <div class="prod-card__meta">
-                        <span class="pill ${statusPill}">${statusLabel}</span>
+                        ${statusTag}
                         <span class="pill">${itemsCount} ${itemsCount === 1 ? 'item' : 'items'}</span>
                     </div>
                     <div class="prod-card__meta" style="color:var(--c-ink-4);font-size:0.8rem;">
                         ${relTime(o.created_at)} · by ${staffLabelForCode(initiator.staff_code, initiator.name)}
                     </div>
+                    ${actionable ? '<div class="prod-card__meta" style="color:var(--c-accent);font-size:0.8rem;font-weight:600;">Tap to copy invoice code →</div>' : ''}
                 </div>
             </article>`;
         }).join('');
@@ -6965,6 +6984,10 @@
             tabs.querySelectorAll('[data-allsales-tab]').forEach((b) => b.classList.toggle('is-active', b === btn));
             renderAllSales();
         });
+        const searchInput = document.getElementById('allSalesSearch');
+        if (searchInput) searchInput.addEventListener('input', () => { allSalesSearch = searchInput.value; renderAllSales(); });
+        const daysSel = document.getElementById('allSalesDays');
+        if (daysSel) daysSel.addEventListener('change', () => { allSalesDays = parseInt(daysSel.value, 10) || 0; renderAllSales(); });
     }
 
     // ---- Verify Invoice view ------------------------------------
