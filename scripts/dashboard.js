@@ -2996,7 +2996,7 @@
             : `<div class="pdetail__media--ph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
         els.pdetailMedia.innerHTML = media;
         els.pdetailItemNo.textContent = p.item_no || '—';
-        els.pdetailTitle.textContent = p.description || 'Product';
+        els.pdetailTitle.textContent = p.name || p.description || 'Product';
         els.pdetailPrice.textContent = CURRENCY + ' ' + Number(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
         const stock = Number(p.stock) || 0;
@@ -3012,6 +3012,9 @@
         els.pdetailMetaPills.innerHTML = pills.join('');
 
         const rows = [];
+        // When a product has a name, the title shows the name — keep the
+        // description visible as its own row.
+        if (p.name && p.description) rows.push(['Description', p.description]);
         const dims = [p.dim_l, p.dim_w, p.dim_h].filter(Boolean).join(' × ');
         if (dims) rows.push(['Dimensions', dims + ' mm']);
         if (p.supplier) rows.push(['Supplier', p.supplier]);
@@ -7634,6 +7637,13 @@
     // Can the SIGNED-IN user perform an action? = role grant OR personal grant.
     function canCurrentUserDo(action) {
         if (currentRole() === 'system_manager') return true;
+        // Hard rule: products may only be edited/deleted by Branch Manager &
+        // Director (+ System Admin, handled above). Staff and Warehouse
+        // Manager can never edit/delete, regardless of granted permissions.
+        if (action === 'product.edit' || action === 'product.delete') {
+            const r = currentRole();
+            if (r !== 'admin' && r !== 'branch_manager') return false;
+        }
         const roleAllowed = allowedActionsForRole(currentRole());
         const userAllowed = session ? allowedActionsForUser(session.id) : [];
         return roleAllowed.includes(action) || userAllowed.includes(action);
