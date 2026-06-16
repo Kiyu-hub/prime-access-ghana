@@ -5697,15 +5697,15 @@
     // System Admin has the full view list (everything).
     // Director (admin) gets everything EXCEPT data-ops pages now owned
     // by System Admin: Drafts, Extract from image, Media, ID Cards.
-    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','showrooms','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions','theme'];
+    const ALL_VIEWS = ['products','showroom','reports','messages','drafts','logs','warehouses','warehouse-stock','taxonomy','branches','showrooms','staff','extract','announcements','payment-accounts','product-transfers','new-sale','purchases','all-sales','verify-invoice','move-stock','media','id-cards','invoice-templates','permissions','theme'];
     // Director gets everything except System Admin-only ops AND id-cards
     // by default; id-cards is dynamically allowed for Director at runtime
     // when the System Admin's feature flag is on (see switchView).
     // 'permissions' is System Admin-only (it controls the other roles).
-    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions' && v !== 'theme');
+    const ADMIN_VIEWS = ALL_VIEWS.filter((v) => v !== 'drafts' && v !== 'extract' && v !== 'media' && v !== 'id-cards' && v !== 'invoice-templates' && v !== 'permissions' && v !== 'theme' && v !== 'all-sales');
     // Staff views depend on their workplace (showroom vs warehouse).
     const STAFF_SHOWROOM_VIEWS  = ['products','showroom','reports','messages','announcements','new-sale','purchases'];
-    const STAFF_WAREHOUSE_VIEWS = ['warehouse-stock','all-sales','reports','messages','announcements','product-transfers','verify-invoice'];
+    const STAFF_WAREHOUSE_VIEWS = ['warehouse-stock','reports','messages','announcements','product-transfers','verify-invoice'];
     const VIEWS_BY_ROLE = {
         admin:             ADMIN_VIEWS,
         system_manager:    ALL_VIEWS,
@@ -8338,8 +8338,9 @@
         if (r === 'system_manager') await updateDraftsBadge();
         // Announcement badge shows for everyone EXCEPT Director
         if (r !== 'admin') await updateAnnouncementBadge();
-        // All Sales pending-counter for warehouse-side users + live updates.
-        if (isWarehouseSideUser()) {
+        // All Sales pending-counter — only roles that can see the page
+        // (System Admin + Warehouse Manager) + live updates.
+        if (allowedViewsForUser().includes('all-sales')) {
             try { await updateAllSalesBadge(); } catch (_) {}
             if (window.CH.customerOrders && window.CH.customerOrders.subscribe) {
                 try {
