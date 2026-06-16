@@ -1,15 +1,11 @@
--- Prime Access Ghana — Drafts + Activity Logs
--- (This migration shipped empty in an early build; restored here.)
+-- Prime Access Ghana — repair missing Activity Logs + Drafts on an EXISTING DB.
+-- The drafts/logs migration shipped empty, so product_logs was never created
+-- (and the Phase-4 dev/live step skipped it because it didn't exist). This
+-- creates it WITH the env column directly. Run once in the SQL Editor; safe to re-run.
 
--- products.is_draft: items captured via import/OCR that await review before
--- they're published to the live catalog.
 alter table public.products add column if not exists is_draft boolean not null default false;
 create index if not exists products_is_draft_idx on public.products(is_draft);
 
--- Activity log of product / staff / order actions shown on the Logs page.
--- NOTE: the dev/live `env` column is added later by the Phase-4 migration
--- (as `mode`, then renamed to `env`). Don't add it here so that rename stays
--- conflict-free on a fresh setup-all run.
 create table if not exists public.product_logs (
     id           uuid primary key default gen_random_uuid(),
     product_id   uuid references public.products(id) on delete set null,
@@ -22,6 +18,8 @@ create table if not exists public.product_logs (
     note         text,
     created_at   timestamptz not null default now()
 );
+-- This DB already passed the dev/live phase (which won't add it now) — add env.
+alter table public.product_logs add column if not exists env text not null default 'live';
 create index if not exists product_logs_created_idx on public.product_logs(created_at desc);
 
 alter table public.product_logs enable row level security;
