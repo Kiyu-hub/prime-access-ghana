@@ -3598,12 +3598,29 @@
             //   branch_manager         -> their branch
             //   warehouse_manager      -> their warehouse (no money)
             //   staff                  -> their branch (read-only summary)
+            // Supers can scope the whole report to one branch via the filter.
+            const filterSel = document.getElementById('reportBranchFilter');
+            if (filterSel && isSuperRole(role)) {
+                filterSel.style.display = '';
+                filterSel.innerHTML = ['<option value="">All branches</option>']
+                    .concat((br || []).map((b) => `<option value="${b.id}" ${b.id === reportBranchId ? 'selected' : ''}>${escapeHtml(b.name)}</option>`)).join('');
+            } else if (filterSel) {
+                filterSel.style.display = 'none';
+            }
             let visibleProducts, visibleBranches, visibleStaff, scopeLabel;
             if (isSuperRole(role)) {
-                visibleProducts = prods;
-                visibleBranches = br;
-                visibleStaff = stf;
-                scopeLabel = `${br.length} branch${br.length === 1 ? '' : 'es'} · ${stf.length} staff company-wide`;
+                if (reportBranchId) {
+                    visibleProducts = prods.filter((p) => p.branch_id === reportBranchId);
+                    visibleBranches = br.filter((b) => b.id === reportBranchId);
+                    visibleStaff = stf.filter((s) => s.branch_id === reportBranchId);
+                    const bn = (br.find((b) => b.id === reportBranchId) || {}).name || 'Branch';
+                    scopeLabel = `${bn} · ${visibleStaff.length} staff`;
+                } else {
+                    visibleProducts = prods;
+                    visibleBranches = br;
+                    visibleStaff = stf;
+                    scopeLabel = `${br.length} branch${br.length === 1 ? '' : 'es'} · ${stf.length} staff company-wide`;
+                }
             } else if (role === 'warehouse_manager' && session.warehouse_id) {
                 visibleProducts = prods.filter((p) => p.warehouse_id === session.warehouse_id);
                 visibleBranches = br.filter((b) => b.id === session.branch_id);
@@ -3891,6 +3908,7 @@
     /* ---- Sales + payments report (date-scoped, role-tailored) ----- */
     // Selected window for every sales/payment figure. Default: this month.
     let reportRange = { preset: 'month', from: null, to: null };
+    let reportBranchId = ''; // supers can scope the report to one branch
 
     function _startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
     function _endOfDay(d)   { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
@@ -3960,7 +3978,9 @@
 
         const mode = (window.CH.devMode && window.CH.devMode.current()) || 'live';
         const range = computeReportRange();
-        const orders = await fetchSalesData(role, mode, range);
+        let orders = await fetchSalesData(role, mode, range);
+        // Supers can scope the sales report to a single branch.
+        if (isSuperRole(role) && reportBranchId) orders = orders.filter((o) => o.branch_id === reportBranchId);
         const isSuper = isSuperRole(role);
         const fmtMoney = (n) => CURRENCY + ' ' + money.format(Number(n) || 0);
         const mkCard = (label, value, hint, kind) =>
@@ -4110,6 +4130,10 @@
     })();
 
     els.reportsRefreshBtn.addEventListener('click', loadReports);
+    {
+        const rbf = document.getElementById('reportBranchFilter');
+        if (rbf) rbf.addEventListener('change', () => { reportBranchId = rbf.value; loadReports(); });
+    }
 
     /* ---- Export PDF -------------------------------------------------- */
     els.reportsExportPdfBtn.addEventListener('click', async () => {
@@ -6237,6 +6261,12 @@
 
     let saleLineSeq = 0;
     let saleAccountsCache = [];
+    // For supers the sale's branch comes from the on-form picker; others use
+    // their own branch.
+    let saleBranchId = '';
+    function effectiveSaleBranchId() {
+        return isSuperRole() ? (saleBranchId || '') : (session.branch_id || '');
+    }
 
     function fmtMoney(n) {
         return CURRENCY + ' ' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -6278,6 +6308,20 @@
             } catch (_) { /* not migrated yet */ }
         }
         form.reset();
+        // Branch selector — supers pick which branch the sale is for.
+        const branchSection = document.getElementById('saleBranchSection');
+        const branchSel = document.getElementById('saleBranch');
+        if (isSuperRole()) {
+            if (branchSection) branchSection.style.display = '';
+            if (branchSel) {
+                branchSel.innerHTML = ['<option value="" disabled ' + (saleBranchId ? '' : 'selected') + '>Select branch</option>']
+                    .concat((branches || []).map((b) => `<option value="${b.id}" ${b.id === saleBranchId ? 'selected' : ''}>${escapeHtml(b.name)}</option>`)).join('');
+                if (!saleBranchId && branches && branches.length === 1) { saleBranchId = branches[0].id; branchSel.value = saleBranchId; }
+            }
+        } else {
+            saleBranchId = session.branch_id || '';
+            if (branchSection) branchSection.style.display = 'none';
+        }
         // Clear lines + add a first one
         const linesHost = $('#saleLines');
         linesHost.innerHTML = '';
@@ -6301,7 +6345,7 @@
         const sel = $('#salePaymentAccount');
         if (!sel || !window.CH || !window.CH.paymentAccounts) return;
         try {
-            saleAccountsCache = await window.CH.paymentAccounts.listForBranch(session.branch_id);
+            saleAccountsCache = await window.CH.paymentAccounts.listForBranch(effectiveSaleBranchId() || session.branch_id);
             updateSaleAccountDropdown();
         } catch (_) {
             saleAccountsCache = [];
@@ -6376,7 +6420,8 @@
         linesHost.appendChild(lineEl);
         // Populate product dropdown with branch's products
         const sel = lineEl.querySelector('[data-sale-product]');
-        const branchProducts = products.filter((p) => !p.is_draft && (session.is_admin || p.branch_id === session.branch_id));
+        const _saleBranch = effectiveSaleBranchId();
+        const branchProducts = products.filter((p) => !p.is_draft && (_saleBranch ? p.branch_id === _saleBranch : (session.is_admin || p.branch_id === session.branch_id)));
         sel.innerHTML = ['<option value="" disabled selected>Pick product</option>']
             .concat(branchProducts.map((p) => `<option value="${p.id}" data-price="${p.price}" data-stock="${p.stock}" data-wh="${p.warehouse_id || ''}" data-item-no="${escapeAttr(p.item_no || '')}" data-desc="${escapeAttr(p.description || '')}" data-image="${escapeAttr(p.image_url || '')}">${escapeHtml((p.item_no ? p.item_no + ' · ' : '') + (p.description || ''))} (${p.stock} in stock)</option>`))
             .join('');
@@ -6450,6 +6495,15 @@
     if (saleMethodEl) saleMethodEl.addEventListener('change', updateSaleAccountDropdown);
     const saleAddBtn = document.getElementById('saleAddLineBtn');
     if (saleAddBtn) saleAddBtn.addEventListener('click', () => { addSaleLine(); saleRecomputeTotal(); });
+    {
+        const saleBranchSel = document.getElementById('saleBranch');
+        if (saleBranchSel) saleBranchSel.addEventListener('change', () => {
+            saleBranchId = saleBranchSel.value;
+            const linesHost = $('#saleLines');
+            if (linesHost) { linesHost.innerHTML = ''; saleLineSeq = 0; addSaleLine(); saleRecomputeTotal(); }
+            loadSaleAccounts();
+        });
+    }
     const saleStaffEl = document.getElementById('saleStaffCode');
     if (saleStaffEl) {
         let debounce;
@@ -6517,12 +6571,15 @@
         }
         code = resolveActionStaffCode(code);
         if (code === null) return;
+        const _saleBranchId = effectiveSaleBranchId();
+        if (!_saleBranchId) { toast('Select the branch this sale is for.', 'error'); return; }
+        const _saleWarehouseId = (isSuperRole() ? defaultWarehouseIdForBranch(_saleBranchId) : resolveDefaultWarehouseForUser()) || defaultWarehouseIdForBranch(_saleBranchId);
         try {
             submitBtn.disabled = true;
             submitBtn.querySelector('span').textContent = 'Generating…';
             const res = await window.CH.customerOrders.create({
-                branch_id: session.branch_id || null,
-                warehouse_id: resolveDefaultWarehouseForUser(),
+                branch_id: _saleBranchId,
+                warehouse_id: _saleWarehouseId,
                 client_name: clientName,
                 client_phone: clientPhone,
                 client_email: clientEmail,

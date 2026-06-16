@@ -5097,6 +5097,15 @@
                 </div>
 
                 <form id="newSaleForm" class="sale-form">
+                    <section class="sale-section" id="saleBranchSection" style="display:none;">
+                        <h2>Branch</h2>
+                        <div class="sale-grid">
+                            <div>
+                                <label for="saleBranch">Record this sale for<span class="req">*</span></label>
+                                <select id="saleBranch"><option value="" disabled selected>Select branch</option></select>
+                            </div>
+                        </div>
+                    </section>
                     <section class="sale-section">
                         <h2>Customer</h2>
                         <div class="sale-grid">
@@ -5721,6 +5730,7 @@
                         <p id="reportsHeading">Overview across all branches.</p>
                     </div>
                     <div class="topbar__actions">
+                        <select id="reportBranchFilter" class="allsales-days" style="display:none;"><option value="">All branches</option></select>
                         <button class="btn" id="reportsRefreshBtn">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                             <span>Refresh</span>
