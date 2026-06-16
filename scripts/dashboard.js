@@ -240,8 +240,10 @@
     // Super roles (Director / System Admin) are company-wide and have no home
     // branch — show "All branches" rather than the unflattering "Unassigned".
     const _isSuper = session.role === 'admin' || session.role === 'system_manager';
-    const _branchLabel = session.branch_name || (_isSuper ? 'All branches' : 'Unassigned');
-    els.userBranch.textContent = _branchLabel + ' · ' + _displayRole;
+    // login defaults branch_name to "Unassigned"; treat that as no branch.
+    const _rawBranch = (session.branch_name && session.branch_name !== 'Unassigned') ? session.branch_name : '';
+    // Supers are company-wide — show only the role (no "Unassigned"/branch).
+    els.userBranch.textContent = _isSuper ? _displayRole : ((_rawBranch || 'Unassigned') + ' · ' + _displayRole);
     renderUserAvatar(session.image_url);
     els.branchHeading.textContent = _branchLabel + ' · ' + _displayRole;
 
@@ -328,7 +330,12 @@
         // feature flag and always has full access to every page.
         // Feature flags hide a feature for EVERYONE (incl. System Admin) when
         // the System Admin unticks it — they re-enable it from the sidebar toggle.
-        if ((view === 'product-transfers' || view === 'verify-invoice') && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
+        if (view === 'product-transfers' && featureFlagsCache && featureFlagsCache.transfers_enabled === false) {
+            toast('This feature is currently disabled.', 'info');
+            switchView('products');
+            return;
+        }
+        if (view === 'verify-invoice' && featureFlagsCache && featureFlagsCache.transfers_enabled === false && !isSuperRole()) {
             toast('This feature is currently disabled.', 'info');
             switchView('products');
             return;
@@ -5755,7 +5762,9 @@
         document.querySelectorAll('.nav a[data-view]').forEach((a) => {
             const v = a.dataset.view;
             let vis = allowed.has(v);
-            if (vis && (v === 'product-transfers' || v === 'verify-invoice') && flags.transfers_enabled === false) vis = false;
+            if (vis && v === 'product-transfers' && flags.transfers_enabled === false) vis = false;
+            // Verify Invoice follows the transfers flag too — but supers always keep it.
+            if (vis && v === 'verify-invoice' && flags.transfers_enabled === false && !isSuperRole()) vis = false;
             if (vis && v === 'move-stock' && flags.move_stock_enabled === false) vis = false;
             if (vis && setupIncomplete && typeof SETUP_BLOCKED_VIEWS !== 'undefined' && SETUP_BLOCKED_VIEWS.includes(v)) vis = false;
             a.style.setProperty('display', vis ? 'flex' : 'none', 'important');
@@ -6941,11 +6950,23 @@
                 toast('Invoice code copied.', 'success');
             }
         });
-        // Load items (qty + product, no money).
+        // Load items (qty + product image, no money).
         try {
             const full = await window.CH.customerOrders.get(id);
-            const rows = (full.items || []).map((it) => `
-                <div class="pdetail__row"><span>${escapeHtml(it.item_no_snap || it.description_snap || 'Item')}</span><b>×${it.qty}</b></div>`).join('');
+            const rows = (full.items || []).map((it) => {
+                const prod = (products || []).find((pp) => pp.id === it.product_id);
+                const img = prod && prod.image_url;
+                const label = (prod && prod.name) || it.description_snap || it.item_no_snap || 'Item';
+                const sub = it.item_no_snap ? escapeHtml(it.item_no_snap) : '';
+                const thumb = img
+                    ? `<img src="${escapeAttr(img)}" alt="" style="width:40px;height:40px;border-radius:8px;object-fit:cover;flex-shrink:0;" />`
+                    : `<div style="width:40px;height:40px;border-radius:8px;background:var(--c-muted);display:grid;place-items:center;flex-shrink:0;"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="var(--c-ink-5)" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`;
+                return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--c-line-2);">
+                    ${thumb}
+                    <div style="flex:1;min-width:0;"><div style="font-weight:600;color:var(--c-ink-2);font-size:0.9rem;">${escapeHtml(label)}</div>${sub ? `<div style="color:var(--c-ink-5);font-size:0.78rem;">${sub}</div>` : ''}</div>
+                    <b style="flex-shrink:0;">×${it.qty}</b>
+                </div>`;
+            }).join('');
             const el = document.getElementById('allSaleItems');
             if (el) el.innerHTML = rows || '<div style="color:var(--c-ink-5);font-size:0.85rem;">No items.</div>';
         } catch (_) {

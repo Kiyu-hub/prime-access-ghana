@@ -2552,6 +2552,20 @@
             font-size: 0.92rem;
         }
         .all-sale-card .prod-card__body { padding: 14px 16px; }
+        .all-sale-card__media { width: 100%; height: 140px; background: var(--c-muted); display: grid; place-items: center; overflow: hidden; }
+        .all-sale-card__media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .all-sale-card__media .ph { color: var(--c-ink-5); }
+        .allsales-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 16px; }
+        .allsales-seg { display: inline-flex; background: var(--c-muted); border-radius: 10px; padding: 3px; gap: 2px; }
+        .allsales-seg button { border: 0; background: transparent; padding: 8px 18px; border-radius: 8px; font-family: inherit; font-size: 0.85rem; font-weight: 600; color: var(--c-ink-4); cursor: pointer; transition: background var(--t-fast), color var(--t-fast); }
+        .allsales-seg button:hover { color: var(--c-ink-2); }
+        .allsales-seg button.is-active { background: var(--c-white); color: var(--c-ink); box-shadow: var(--shadow-sm); }
+        .allsales-search { position: relative; flex: 1; min-width: 220px; }
+        .allsales-search > svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--c-ink-5); pointer-events: none; }
+        .allsales-search input { width: 100%; height: 40px; padding: 0 12px 0 38px; border: 1px solid var(--c-line); border-radius: 10px; font-family: inherit; font-size: 0.9rem; background: var(--c-white); color: var(--c-ink-2); }
+        .allsales-search input:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.12); }
+        .allsales-days { height: 40px; border: 1px solid var(--c-line); border-radius: 10px; padding: 0 12px; background: var(--c-white); color: var(--c-ink-2); font-family: inherit; font-size: 0.9rem; cursor: pointer; }
+        .allsales-days:focus { outline: none; border-color: var(--c-accent); box-shadow: 0 0 0 3px rgba(3, 105, 161, 0.12); }
         .prod-card {
             background: var(--c-white);
             border: 1px solid var(--c-line);
@@ -5227,14 +5241,17 @@
                     </div>
                 </div>
                 <div id="allSalesReceiveBanner" class="all-sales-banner" style="display:none;"></div>
-                <div class="seg" id="allSalesTabs" style="display:inline-flex;gap:6px;margin-bottom:14px;">
-                    <button class="btn btn--ghost is-active" data-allsales-tab="pending">Pending</button>
-                    <button class="btn btn--ghost" data-allsales-tab="fulfilled">Completed</button>
-                    <button class="btn btn--ghost" data-allsales-tab="all">All</button>
-                </div>
-                <div class="all-sales-filters" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
-                    <input type="search" id="allSalesSearch" placeholder="Search by customer name…" autocomplete="off" style="flex:1;min-width:200px;" />
-                    <select id="allSalesDays" style="max-width:200px;">
+                <div class="allsales-toolbar">
+                    <div class="allsales-seg" id="allSalesTabs">
+                        <button class="is-active" data-allsales-tab="pending">Pending</button>
+                        <button data-allsales-tab="fulfilled">Completed</button>
+                        <button data-allsales-tab="all">All</button>
+                    </div>
+                    <div class="allsales-search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        <input type="search" id="allSalesSearch" placeholder="Search by customer name…" autocomplete="off" />
+                    </div>
+                    <select id="allSalesDays" class="allsales-days">
                         <option value="0">All dates</option>
                         <option value="1">Today</option>
                         <option value="7">Last 7 days</option>
