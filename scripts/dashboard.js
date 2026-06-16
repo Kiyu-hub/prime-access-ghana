@@ -1417,6 +1417,7 @@
                     : 'pill--stock-good';
                 return `<tr>
                     <td><span class="itemno">${escapeHtml(r.item_no || '—')}</span></td>
+                    <td>${r.name ? '<strong>' + escapeHtml(r.name) + '</strong>' : '<span style="color:var(--c-ink-5);">—</span>'}</td>
                     <td>${escapeHtml(r.description || '—')}</td>
                     <td>${r.category ? '<span class="pill">' + escapeHtml(r.category) + '</span>' : ''}</td>
                     <td><span class="pill ${stockClass}">${stock}</span></td>
@@ -1430,7 +1431,7 @@
                 </div>
                 <div class="wh-stock-panel__table">
                     <table class="tbl wh-stock-tbl">
-                        <thead><tr><th>Item no.</th><th>Description</th><th>Category</th><th>Quantity</th></tr></thead>
+                        <thead><tr><th>Item no.</th><th>Name</th><th>Description</th><th>Category</th><th>Quantity</th></tr></thead>
                         <tbody>${itemsHtml}</tbody>
                     </table>
                 </div>`;
@@ -2853,6 +2854,7 @@
                 </div>
                 <div class="prod-card__body">
                     <div class="prod-card__itemno">${escapeHtml(p.item_no || '—')}</div>
+                    ${p.name ? '<div class="prod-card__name" style="font-weight:700;color:var(--c-ink);font-size:0.9rem;margin-bottom:2px;">' + escapeHtml(p.name) + '</div>' : ''}
                     <h3 class="prod-card__title">${escapeHtml(p.description || '')}</h3>
                     <div class="prod-card__meta">
                         ${p.category ? '<span class="pill">' + escapeHtml(p.category) + '</span>' : ''}
