@@ -243,9 +243,10 @@
     // login defaults branch_name to "Unassigned"; treat that as no branch.
     const _rawBranch = (session.branch_name && session.branch_name !== 'Unassigned') ? session.branch_name : '';
     // Supers are company-wide — show only the role (no "Unassigned"/branch).
-    els.userBranch.textContent = _isSuper ? _displayRole : ((_rawBranch || 'Unassigned') + ' · ' + _displayRole);
+    const _branchLabel = _isSuper ? _displayRole : ((_rawBranch || 'Unassigned') + ' · ' + _displayRole);
+    els.userBranch.textContent = _branchLabel;
     renderUserAvatar(session.image_url);
-    els.branchHeading.textContent = _branchLabel + ' · ' + _displayRole;
+    if (els.branchHeading) els.branchHeading.textContent = _branchLabel;
 
     /* Sidebar avatar: staff photo if set, otherwise brand logo. */
     function renderUserAvatar(imageUrl) {
